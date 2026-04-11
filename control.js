@@ -26,6 +26,7 @@ const accessError = document.getElementById('accessError');
 const infoLink = document.getElementById('infoLink');
 const infoModal = document.getElementById('infoModal');
 const closeInfoModal = document.getElementById('closeInfoModal');
+const syncChannel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('bva-sync') : null;
 let lastScoreText = 'Geen recente score';
 
 const initialHomePlayers = [
@@ -273,6 +274,12 @@ function hideInfoPopup() {
   }
 }
 
+function broadcastSyncMessage(message) {
+  if (syncChannel) {
+    syncChannel.postMessage(message);
+  }
+}
+
 function togglePlayerOnField(player, team) {
   const players = team === 'home' ? homePlayers : awayPlayers;
   
@@ -411,6 +418,7 @@ function saveState() {
     awayPlayers,
   };
   localStorage.setItem('bva-match-state', JSON.stringify(state));
+  broadcastSyncMessage({ type: 'state', state });
   window.dispatchEvent(new CustomEvent('stateChanged', { detail: state }));
   updateControlScoreboard();
 }
@@ -448,6 +456,7 @@ function showPopup(player, type) {
   // Store popup data in localStorage for projection page
   const popupData = { player, type };
   localStorage.setItem('popup-data', JSON.stringify(popupData));
+  broadcastSyncMessage({ type: 'popup', popupData });
   // Dispatch event to trigger popup on projection page if it's open
   window.dispatchEvent(new CustomEvent('showPopup', { detail: popupData }));
 }
@@ -489,6 +498,7 @@ function hidePregameModal() {
 
 function sendPregameAction(action) {
   localStorage.setItem('pregame-action', JSON.stringify(action));
+  broadcastSyncMessage({ type: 'pregame-action', action });
   try {
     if (window.projectionWindow && !window.projectionWindow.closed) {
       window.projectionWindow.handlePregameAction(action);
@@ -629,6 +639,7 @@ function stopTimeout() {
     console.log('Projection window not accessible, using localStorage stop action');
   }
   localStorage.setItem('timeout-action', JSON.stringify({ type: 'stop' }));
+  broadcastSyncMessage({ type: 'timeout-action', action: { type: 'stop' } });
   hideActivePrompt();
 }
 
@@ -665,6 +676,7 @@ function startTimeout() {
   };
   
   localStorage.setItem('timeout-data', JSON.stringify(timeoutData));
+  broadcastSyncMessage({ type: 'timeout-data', timeoutData });
   
   // Try direct window communication
   try {
@@ -690,6 +702,7 @@ function startHalftime(remainingSeconds = 15 * 60) {
   };
   
   localStorage.setItem('halftime-data', JSON.stringify(halftimeData));
+  broadcastSyncMessage({ type: 'halftime-data', halftimeData });
   
   // Try direct window communication
   try {
