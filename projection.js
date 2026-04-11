@@ -25,6 +25,8 @@ let currentState = {
   awayPlayers: [],
 };
 
+const syncChannel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('bva-sync') : null;
+let lastStoredStateJSON = null;
 let popupTimeout = null;
 let countdownInterval = null;
 let currentCountdownType = null;
@@ -157,6 +159,60 @@ function getStoredLastScore() {
   } catch (e) {
     return 'geen recente score';
   }
+}
+
+function syncState() {
+  const storedStateJSON = localStorage.getItem('bva-match-state');
+  if (storedStateJSON && storedStateJSON !== lastStoredStateJSON) {
+    try {
+      currentState = JSON.parse(storedStateJSON);
+      renderProjection();
+      lastStoredStateJSON = storedStateJSON;
+    } catch (e) {
+      console.error('Onjuiste opgeslagen status in localStorage:', e);
+    }
+  }
+}
+
+if (syncChannel) {
+  syncChannel.addEventListener('message', (event) => {
+    const message = event.data;
+    if (!message || !message.type) return;
+
+    if (message.type === 'state' && message.state) {
+      currentState = message.state;
+      renderProjection();
+      lastStoredStateJSON = JSON.stringify(message.state);
+    }
+
+    if (message.type === 'popup' && message.popupData) {
+      showPopup(message.popupData);
+    }
+
+    if (message.type === 'timeout-data' && message.timeoutData) {
+      if (!currentCountdownType) {
+        startTimeoutCountdown(message.timeoutData);
+      }
+    }
+
+    if (message.type === 'halftime-data' && message.halftimeData) {
+      if (!currentCountdownType) {
+        startHalftimeCountdown(message.halftimeData);
+      }
+    }
+
+    if (message.type === 'timeout-action' && message.action && message.action.type === 'stop') {
+      stopTimeout();
+    }
+
+    if (message.type === 'halftime-action' && message.action && message.action.type === 'stop') {
+      stopHalftime();
+    }
+
+    if (message.type === 'pregame-action' && message.action) {
+      handlePregameAction(message.action);
+    }
+  });
 }
 
 function updateLastScoreDisplay() {
@@ -367,6 +423,7 @@ function loadState() {
   const saved = localStorage.getItem('bva-match-state');
   if (saved) {
     currentState = JSON.parse(saved);
+    lastStoredStateJSON = saved;
   }
   renderProjection();
 }
@@ -413,13 +470,6 @@ function showPopup(popupData) {
   }, 5000);
 }
 
-// Listen for state changes from control page
-window.addEventListener('storage', (e) => {
-  if (e.key === 'bva-match-state') {
-    loadState();
-  }
-});
-
 // Listen for custom events from control page (same window)
 window.addEventListener('stateChanged', (e) => {
   currentState = e.detail;
@@ -433,6 +483,10 @@ window.addEventListener('showPopup', (e) => {
 
 // Listen for localStorage changes (for cross-window communication)
 window.addEventListener('storage', (e) => {
+  if (e.key === 'bva-match-state' && e.newValue) {
+    syncState();
+  }
+
   if (e.key === 'popup-data' && e.newValue) {
     const popupData = JSON.parse(e.newValue);
     showPopup(popupData);
@@ -518,6 +572,8 @@ setInterval(() => {
       }
     }
   }
+
+  syncState();
 }, 50);
 
 window.addEventListener('resize', () => {
