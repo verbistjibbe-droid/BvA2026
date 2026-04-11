@@ -27,7 +27,12 @@ const infoLink = document.getElementById('infoLink');
 const infoModal = document.getElementById('infoModal');
 const closeInfoModal = document.getElementById('closeInfoModal');
 const syncChannel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('bva-sync') : null;
+const socket = (location.protocol === 'http:' || location.protocol === 'https:')
+  ? new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`)
+  : null;
+const socketQueue = [];
 let lastScoreText = 'Geen recente score';
+
 
 const initialHomePlayers = [
   { number: 4, name: 'Player A', points: 0, fouls: 0, team: 'home', onField: false },
@@ -280,6 +285,32 @@ function broadcastSyncMessage(message) {
   }
 }
 
+function sendSocketMessage(message) {
+  if (!socket) return;
+  const payload = JSON.stringify(message);
+  if (socket.readyState === WebSocket.OPEN) {
+    socket.send(payload);
+  } else {
+    socketQueue.push(payload);
+  }
+}
+
+if (socket) {
+  socket.addEventListener('open', () => {
+    while (socketQueue.length) {
+      socket.send(socketQueue.shift());
+    }
+  });
+
+  socket.addEventListener('error', (event) => {
+    console.warn('WebSocket error', event);
+  });
+
+  socket.addEventListener('close', () => {
+    console.warn('WebSocket closed');
+  });
+}
+
 function togglePlayerOnField(player, team) {
   const players = team === 'home' ? homePlayers : awayPlayers;
   
@@ -416,9 +447,11 @@ function saveState() {
     period: currentPeriod,
     homePlayers,
     awayPlayers,
+    lastScoreText,
   };
   localStorage.setItem('bva-match-state', JSON.stringify(state));
   broadcastSyncMessage({ type: 'state', state });
+  sendSocketMessage({ type: 'state', state });
   window.dispatchEvent(new CustomEvent('stateChanged', { detail: state }));
   updateControlScoreboard();
 }
@@ -457,6 +490,7 @@ function showPopup(player, type) {
   const popupData = { player, type };
   localStorage.setItem('popup-data', JSON.stringify(popupData));
   broadcastSyncMessage({ type: 'popup', popupData });
+  sendSocketMessage({ type: 'popup', popupData });
   // Dispatch event to trigger popup on projection page if it's open
   window.dispatchEvent(new CustomEvent('showPopup', { detail: popupData }));
 }
@@ -499,6 +533,7 @@ function hidePregameModal() {
 function sendPregameAction(action) {
   localStorage.setItem('pregame-action', JSON.stringify(action));
   broadcastSyncMessage({ type: 'pregame-action', action });
+  sendSocketMessage({ type: 'pregame-action', action });
   try {
     if (window.projectionWindow && !window.projectionWindow.closed) {
       window.projectionWindow.handlePregameAction(action);
@@ -677,6 +712,7 @@ function startTimeout() {
   
   localStorage.setItem('timeout-data', JSON.stringify(timeoutData));
   broadcastSyncMessage({ type: 'timeout-data', timeoutData });
+  sendSocketMessage({ type: 'timeout-data', timeoutData });
   
   // Try direct window communication
   try {
@@ -703,6 +739,7 @@ function startHalftime(remainingSeconds = 15 * 60) {
   
   localStorage.setItem('halftime-data', JSON.stringify(halftimeData));
   broadcastSyncMessage({ type: 'halftime-data', halftimeData });
+  sendSocketMessage({ type: 'halftime-data', halftimeData });
   
   // Try direct window communication
   try {
