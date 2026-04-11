@@ -23,9 +23,13 @@ let currentState = {
   period: '1',
   homePlayers: [],
   awayPlayers: [],
+  lastScoreText: 'geen recente score',
 };
 
 const syncChannel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('bva-sync') : null;
+const socket = (location.protocol === 'http:' || location.protocol === 'https:')
+  ? new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`)
+  : null;
 let lastStoredStateJSON = null;
 let popupTimeout = null;
 let countdownInterval = null;
@@ -215,10 +219,64 @@ if (syncChannel) {
   });
 }
 
+if (socket) {
+  socket.addEventListener('message', (event) => {
+    try {
+      const message = JSON.parse(event.data);
+      if (!message || !message.type) return;
+
+      if (message.type === 'state' && message.state) {
+        currentState = message.state;
+        renderProjection();
+        lastStoredStateJSON = JSON.stringify(message.state);
+      }
+
+      if (message.type === 'popup' && message.popupData) {
+        showPopup(message.popupData);
+      }
+
+      if (message.type === 'timeout-data' && message.timeoutData) {
+        if (!currentCountdownType) {
+          startTimeoutCountdown(message.timeoutData);
+        }
+      }
+
+      if (message.type === 'halftime-data' && message.halftimeData) {
+        if (!currentCountdownType) {
+          startHalftimeCountdown(message.halftimeData);
+        }
+      }
+
+      if (message.type === 'timeout-action' && message.action && message.action.type === 'stop') {
+        stopTimeout();
+      }
+
+      if (message.type === 'halftime-action' && message.action && message.action.type === 'stop') {
+        stopHalftime();
+      }
+
+      if (message.type === 'pregame-action' && message.action) {
+        handlePregameAction(message.action);
+      }
+    } catch (error) {
+      console.error('Invalid WebSocket message', error);
+    }
+  });
+
+  socket.addEventListener('error', (event) => {
+    console.warn('WebSocket error', event);
+  });
+
+  socket.addEventListener('close', () => {
+    console.warn('WebSocket connection closed');
+  });
+}
+
 function updateLastScoreDisplay() {
   const lastScoreElement = document.getElementById('timeoutLastScoreDisplay');
   if (lastScoreElement) {
-    lastScoreElement.textContent = `Laatste score: ${getStoredLastScore()}`;
+    const scoreText = currentState.lastScoreText || getStoredLastScore();
+    lastScoreElement.textContent = `Laatste score: ${scoreText}`;
   }
 }
 
