@@ -153,10 +153,10 @@
           </label>
         </div>
         <div class="modal-actions pregame-actions">
-          <button id="preparePregameBtn" class="action-button">Klaarzetten</button>
-          <button id="startPregameBtn" class="action-button">START PREGAME</button>
-          <button id="nextPlayerBtn" class="action-button hidden">Volgende speler</button>
-          <button id="cancelPregameBtn" class="action-button">Annuleer</button>
+          <button id="preparePregameBtn" type="button" class="action-button">Klaarzetten</button>
+          <button id="startPregameBtn" type="button" class="action-button">START PREGAME</button>
+          <button id="nextPlayerBtn" type="button" class="action-button hidden">Volgende speler</button>
+          <button id="cancelPregameBtn" type="button" class="action-button">Annuleer</button>
         </div>
         <div id="pregameStatus" class="modal-description">Kies een startteam om de pregame te starten of klaar te zetten.</div>
       </div>
@@ -201,7 +201,7 @@
     <button id="resetBtn" class="action-button">Reset wedstrijd</button>
 
     <div class="projection-link">
-      <a href="#" onclick="window.projectionWindow = window.open('projection.html', 'projection'); return false;">Open projectiescherm</a>
+      <button id="openProjectionBtn" class="action-button">Open projectiescherm</button>
     </div>
   </div>
 
