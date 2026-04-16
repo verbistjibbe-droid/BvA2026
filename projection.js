@@ -15,6 +15,15 @@ const pregamePlayerRow = document.getElementById('pregamePlayerRow');
 const pregamePlayerNumber = document.getElementById('pregamePlayerNumber');
 const pregamePlayerName = document.getElementById('pregamePlayerName');
 
+const pathname = window.location.pathname.replace(/^\//, '');
+let matchId = null;
+if (pathname && !pathname.includes('.') && pathname !== 'projection.html') {
+  matchId = pathname;
+}
+if (!matchId) {
+  matchId = new URLSearchParams(window.location.search).get('category') || new URLSearchParams(window.location.search).get('match');
+}
+
 let currentState = {
   homeName: 'TEAM A',
   awayName: 'TEAM B',
@@ -31,10 +40,47 @@ const socket = (location.protocol === 'http:' || location.protocol === 'https:')
   ? new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`)
   : null;
 let lastStoredStateJSON = null;
+
+function storageKey(key) {
+  return matchId ? `${key}-${matchId}` : key;
+}
+
+function sendSocketMessage(message) {
+  if (!socket || !matchId) return;
+  message.matchId = matchId;
+  const payload = JSON.stringify(message);
+  if (socket.readyState === WebSocket.OPEN) {
+    socket.send(payload);
+  }
+}
+
+if (socket) {
+  socket.addEventListener('open', () => {
+    sendSocketMessage({ type: 'join' });
+  });
+
+  socket.addEventListener('error', (event) => {
+    console.warn('WebSocket error', event);
+  });
+
+  socket.addEventListener('close', () => {
+    console.warn('WebSocket connection closed');
+  });
+}
 let popupTimeout = null;
 let countdownInterval = null;
 let currentCountdownType = null;
 let pregameScreenMode = 'main';
+
+function splitPlayerName(name) {
+  const trimmed = name.trim();
+  if (!trimmed) return [''];
+  const parts = trimmed.split(' ');
+  if (parts.length > 1 && trimmed.length > 14) {
+    return [parts[0], parts.slice(1).join(' ')];
+  }
+  return [trimmed];
+}
 
 function createProjectionItem(player, teamColor) {
   const item = document.createElement('div');
@@ -57,7 +103,16 @@ function createProjectionItem(player, teamColor) {
   
   const name = document.createElement('div');
   name.className = 'proj-name';
-  name.textContent = player.name;
+  const nameLines = splitPlayerName(player.name);
+  nameLines.forEach((line, index) => {
+    const lineEl = document.createElement('span');
+    lineEl.className = index === 0 ? 'proj-name-first-line' : 'proj-name-second-line';
+    lineEl.textContent = line;
+    name.append(lineEl);
+  });
+  if (nameLines.length > 1) {
+    name.classList.add('multi-line');
+  }
   
   // Add blinking dot if player is on field
   if (player.onField) {
@@ -158,7 +213,7 @@ function formatTime(seconds) {
 
 function getStoredLastScore() {
   try {
-    const stored = JSON.parse(localStorage.getItem('last-score') || 'null');
+    const stored = JSON.parse(localStorage.getItem(storageKey('last-score')) || 'null');
     return stored && stored.text ? stored.text : 'geen recente score';
   } catch (e) {
     return 'geen recente score';
@@ -166,7 +221,7 @@ function getStoredLastScore() {
 }
 
 function syncState() {
-  const storedStateJSON = localStorage.getItem('bva-match-state');
+  const storedStateJSON = localStorage.getItem(storageKey('bva-match-state'));
   if (storedStateJSON && storedStateJSON !== lastStoredStateJSON) {
     try {
       currentState = JSON.parse(storedStateJSON);
@@ -399,13 +454,13 @@ function startTimeoutCountdown(timeoutData) {
   if (countdownInterval) clearInterval(countdownInterval);
   countdownInterval = setInterval(() => {
     remaining -= 1;
-    const timeoutDataUpdate = JSON.parse(localStorage.getItem('timeout-data') || '{}');
+    const timeoutDataUpdate = JSON.parse(localStorage.getItem(storageKey('timeout-data')) || '{}');
     timeoutDataUpdate.remaining = remaining;
-    localStorage.setItem('timeout-data', JSON.stringify(timeoutDataUpdate));
+    localStorage.setItem(storageKey('timeout-data'), JSON.stringify(timeoutDataUpdate));
     
     if (remaining <= 0) {
       clearInterval(countdownInterval);
-      localStorage.removeItem('timeout-data');
+      localStorage.removeItem(storageKey('timeout-data'));
       mainDisplay.style.display = '';
       timeoutPopup.classList.add('hidden');
       currentCountdownType = null;
@@ -437,13 +492,13 @@ function startHalftimeCountdown(halftimeData) {
   if (countdownInterval) clearInterval(countdownInterval);
   countdownInterval = setInterval(() => {
     remaining -= 1;
-    const halftimeDataUpdate = JSON.parse(localStorage.getItem('halftime-data') || '{}');
+    const halftimeDataUpdate = JSON.parse(localStorage.getItem(storageKey('halftime-data')) || '{}');
     halftimeDataUpdate.remaining = remaining;
-    localStorage.setItem('halftime-data', JSON.stringify(halftimeDataUpdate));
+    localStorage.setItem(storageKey('halftime-data'), JSON.stringify(halftimeDataUpdate));
     
     if (remaining <= 0) {
       clearInterval(countdownInterval);
-      localStorage.removeItem('halftime-data');
+      localStorage.removeItem(storageKey('halftime-data'));
       mainDisplay.style.display = '';
       halftimePopup.classList.add('hidden');
       currentCountdownType = null;
@@ -459,7 +514,7 @@ function stopTimeout() {
     countdownInterval = null;
   }
   currentCountdownType = null;
-  localStorage.removeItem('timeout-data');
+  localStorage.removeItem(storageKey('timeout-data'));
   if (mainDisplay) mainDisplay.style.display = '';
   if (timeoutPopup) timeoutPopup.classList.add('hidden');
 }
@@ -472,13 +527,13 @@ function stopHalftime() {
     countdownInterval = null;
   }
   currentCountdownType = null;
-  localStorage.removeItem('halftime-data');
+  localStorage.removeItem(storageKey('halftime-data'));
   if (mainDisplay) mainDisplay.style.display = '';
   if (halftimePopup) halftimePopup.classList.add('hidden');
 }
 
 function loadState() {
-  const saved = localStorage.getItem('bva-match-state');
+  const saved = localStorage.getItem(storageKey('bva-match-state'));
   if (saved) {
     currentState = JSON.parse(saved);
     lastStoredStateJSON = saved;
@@ -541,80 +596,80 @@ window.addEventListener('showPopup', (e) => {
 
 // Listen for localStorage changes (for cross-window communication)
 window.addEventListener('storage', (e) => {
-  if (e.key === 'bva-match-state' && e.newValue) {
+  if (e.key === storageKey('bva-match-state') && e.newValue) {
     syncState();
   }
 
-  if (e.key === 'popup-data' && e.newValue) {
+  if (e.key === storageKey('popup-data') && e.newValue) {
     const popupData = JSON.parse(e.newValue);
     showPopup(popupData);
-    localStorage.removeItem('popup-data');
+    localStorage.removeItem(storageKey('popup-data'));
   }
 
-  if (e.key === 'last-score' && e.newValue) {
+  if (e.key === storageKey('last-score') && e.newValue) {
     updateLastScoreDisplay();
   }
   
-  if (e.key === 'timeout-data' && e.newValue) {
+  if (e.key === storageKey('timeout-data') && e.newValue) {
     const timeoutData = JSON.parse(e.newValue);
     if (!currentCountdownType) {
       startTimeoutCountdown(timeoutData);
     }
   }
   
-  if (e.key === 'halftime-data' && e.newValue) {
+  if (e.key === storageKey('halftime-data') && e.newValue) {
     const halftimeData = JSON.parse(e.newValue);
     if (!currentCountdownType) {
       startHalftimeCountdown(halftimeData);
     }
   }
 
-  if (e.key === 'timeout-action' && e.newValue) {
+  if (e.key === storageKey('timeout-action') && e.newValue) {
     const action = JSON.parse(e.newValue);
     if (action.type === 'stop') {
       stopTimeout();
     }
-    localStorage.removeItem('timeout-action');
+    localStorage.removeItem(storageKey('timeout-action'));
   }
 
-  if (e.key === 'halftime-action' && e.newValue) {
+  if (e.key === storageKey('halftime-action') && e.newValue) {
     const action = JSON.parse(e.newValue);
     if (action.type === 'stop') {
       stopHalftime();
     }
-    localStorage.removeItem('halftime-action');
+    localStorage.removeItem(storageKey('halftime-action'));
   }
 
-  if (e.key === 'pregame-action' && e.newValue) {
+  if (e.key === storageKey('pregame-action') && e.newValue) {
     const action = JSON.parse(e.newValue);
     handlePregameAction(action);
   }
 });
 
 // Check for stored popup data on load
-const storedPopupData = localStorage.getItem('popup-data');
+const storedPopupData = localStorage.getItem(storageKey('popup-data'));
 if (storedPopupData) {
   const popupData = JSON.parse(storedPopupData);
   showPopup(popupData);
-  localStorage.removeItem('popup-data');
+  localStorage.removeItem(storageKey('popup-data'));
 }
 
 // Clean up old timeout/halftime data on startup
-localStorage.removeItem('timeout-data');
-localStorage.removeItem('halftime-data');
+localStorage.removeItem(storageKey('timeout-data'));
+  localStorage.removeItem(storageKey('halftime-data'));
 
 // Also check periodically for popup data (fallback)
 setInterval(() => {
-  const data = localStorage.getItem('popup-data');
+  const data = localStorage.getItem(storageKey('popup-data'));
   if (data) {
     const popupData = JSON.parse(data);
     showPopup(popupData);
-    localStorage.removeItem('popup-data');
+    localStorage.removeItem(storageKey('popup-data'));
   }
   
   // Also check periodically for timeout/halftime data
   if (!currentCountdownType) {
-    const timeoutData = localStorage.getItem('timeout-data');
+    const timeoutData = localStorage.getItem(storageKey('timeout-data'));
     if (timeoutData) {
       const parsed = JSON.parse(timeoutData);
       if (parsed.remaining && parsed.remaining > 0) {
@@ -622,7 +677,7 @@ setInterval(() => {
       }
     }
     
-    const halftimeData = localStorage.getItem('halftime-data');
+    const halftimeData = localStorage.getItem(storageKey('halftime-data'));
     if (halftimeData) {
       const parsed = JSON.parse(halftimeData);
       if (parsed.remaining && parsed.remaining > 0) {
