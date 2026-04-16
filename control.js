@@ -26,6 +26,8 @@ const accessError = document.getElementById('accessError');
 const infoLink = document.getElementById('infoLink');
 const infoModal = document.getElementById('infoModal');
 const closeInfoModal = document.getElementById('closeInfoModal');
+const openProjectionBtn = document.getElementById('openProjectionBtn');
+let currentMatchId = null;
 const syncChannel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('bva-sync') : null;
 const socket = (location.protocol === 'http:' || location.protocol === 'https:')
   ? new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`)
@@ -279,14 +281,75 @@ function hideInfoPopup() {
   }
 }
 
+function storageKey(key) {
+  return currentMatchId ? `${key}-${currentMatchId}` : key;
+}
+
+function sanitizeCategory(category) {
+  return category
+    .trim()
+    .replace(/^\/+|\/+$/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/[^A-Za-z0-9_-]/g, '');
+}
+
+function askCategory() {
+  const answer = window.prompt('Van welke categorie is deze finale?');
+  if (!answer) return null;
+  return sanitizeCategory(answer);
+}
+
+function getProjectionLink() {
+  if (!currentMatchId) return '';
+  if (location.protocol === 'http:' || location.protocol === 'https:') {
+    return `${location.origin}/${currentMatchId}`;
+  }
+  return `projection.html?category=${encodeURIComponent(currentMatchId)}`;
+}
+
+function updateProjectionLink() {
+  if (openProjectionBtn) {
+    openProjectionBtn.disabled = false;
+  }
+}
+
+function trySendJoin() {
+  if (socket && socket.readyState === WebSocket.OPEN && currentMatchId) {
+    sendSocketMessage({ type: 'join' });
+  }
+}
+
+async function openProjectionWindow() {
+  const category = askCategory();
+  if (!category) return;
+
+  currentMatchId = category;
+  updateProjectionLink();
+  trySendJoin();
+
+  const link = getProjectionLink();
+  if (!link) return;
+
+  if (window.projectionWindow && !window.projectionWindow.closed) {
+    window.projectionWindow.location.href = link;
+  } else {
+    window.projectionWindow = window.open(link, 'projection');
+  }
+}
+
 function broadcastSyncMessage(message) {
   if (syncChannel) {
-    syncChannel.postMessage(message);
+    try {
+      syncChannel.postMessage(message);
+    } catch (error) {
+      console.warn('BroadcastChannel error', error);
+    }
   }
 }
 
 function sendSocketMessage(message) {
-  if (!socket) return;
+  if (!socket || !currentMatchId) return;
+  message.matchId = currentMatchId;
   const payload = JSON.stringify(message);
   if (socket.readyState === WebSocket.OPEN) {
     socket.send(payload);
@@ -300,6 +363,7 @@ if (socket) {
     while (socketQueue.length) {
       socket.send(socketQueue.shift());
     }
+    trySendJoin();
   });
 
   socket.addEventListener('error', (event) => {
@@ -411,6 +475,8 @@ function renderRoster() {
   addAwayBtn.textContent = '+ Speler toevoegen';
   addAwayBtn.addEventListener('click', () => addPlayer('away'));
   awayPlayersEl.append(addAwayBtn);
+
+  updateControlScoreboard();
 }
 
 function createPlayerSection(title, players, team) {
@@ -449,7 +515,7 @@ function saveState() {
     awayPlayers,
     lastScoreText,
   };
-  localStorage.setItem('bva-match-state', JSON.stringify(state));
+  localStorage.setItem(storageKey('bva-match-state'), JSON.stringify(state));
   broadcastSyncMessage({ type: 'state', state });
   sendSocketMessage({ type: 'state', state });
   window.dispatchEvent(new CustomEvent('stateChanged', { detail: state }));
@@ -470,7 +536,7 @@ function updateControlScoreboard() {
 function updatePlayer(player, points, type) {
   player.points += points;
   lastScoreText = `${player.name} - ${type}`;
-  localStorage.setItem('last-score', JSON.stringify({ text: lastScoreText, timestamp: Date.now() }));
+  localStorage.setItem(storageKey('last-score'), JSON.stringify({ text: lastScoreText, timestamp: Date.now() }));
   renderRoster();
   saveState();
   showPopup(player, type);
@@ -488,7 +554,7 @@ function addFoul(player) {
 function showPopup(player, type) {
   // Store popup data in localStorage for projection page
   const popupData = { player, type };
-  localStorage.setItem('popup-data', JSON.stringify(popupData));
+  localStorage.setItem(storageKey('popup-data'), JSON.stringify(popupData));
   broadcastSyncMessage({ type: 'popup', popupData });
   sendSocketMessage({ type: 'popup', popupData });
   // Dispatch event to trigger popup on projection page if it's open
@@ -499,8 +565,10 @@ function resetMatch() {
   if (confirm('Weet je zeker dat je de wedstrijd wil resetten? Alle scores en fouten worden verwijderd.')) {
     homePlayers = initialHomePlayers.map((player) => ({ ...player, points: 0, fouls: 0, onField: false }));
     awayPlayers = initialAwayPlayers.map((player) => ({ ...player, points: 0, fouls: 0, onField: false }));
+    currentMatchId = null;
     renderRoster();
     saveState();
+    updateProjectionLink();
     updatePregameButtonVisibility();
   }
 }
@@ -524,6 +592,10 @@ function showPregameModal() {
   preparePregameBtn.classList.remove('hidden');
   startPregameBtn.classList.remove('hidden');
   nextPlayerBtn.classList.add('hidden');
+  const defaultTeamInput = document.querySelector('input[name="pregame-team"][value="home"]');
+  if (defaultTeamInput) {
+    defaultTeamInput.checked = true;
+  }
 }
 
 function hidePregameModal() {
@@ -531,7 +603,7 @@ function hidePregameModal() {
 }
 
 function sendPregameAction(action) {
-  localStorage.setItem('pregame-action', JSON.stringify(action));
+  localStorage.setItem(storageKey('pregame-action'), JSON.stringify(action));
   broadcastSyncMessage({ type: 'pregame-action', action });
   sendSocketMessage({ type: 'pregame-action', action });
   try {
@@ -673,8 +745,9 @@ function stopTimeout() {
   } catch (e) {
     console.log('Projection window not accessible, using localStorage stop action');
   }
-  localStorage.setItem('timeout-action', JSON.stringify({ type: 'stop' }));
+  localStorage.setItem(storageKey('timeout-action'), JSON.stringify({ type: 'stop' }));
   broadcastSyncMessage({ type: 'timeout-action', action: { type: 'stop' } });
+  sendSocketMessage({ type: 'timeout-action', action: { type: 'stop' } });
   hideActivePrompt();
 }
 
@@ -686,7 +759,9 @@ function stopHalftime() {
   } catch (e) {
     console.log('Projection window not accessible, using localStorage stop action');
   }
-  localStorage.setItem('halftime-action', JSON.stringify({ type: 'stop' }));
+  localStorage.setItem(storageKey('halftime-action'), JSON.stringify({ type: 'stop' }));
+  broadcastSyncMessage({ type: 'halftime-action', action: { type: 'stop' } });
+  sendSocketMessage({ type: 'halftime-action', action: { type: 'stop' } });
   hideActivePrompt();
 }
 
@@ -710,7 +785,7 @@ function startTimeout() {
     remaining: 60,
   };
   
-  localStorage.setItem('timeout-data', JSON.stringify(timeoutData));
+  localStorage.setItem(storageKey('timeout-data'), JSON.stringify(timeoutData));
   broadcastSyncMessage({ type: 'timeout-data', timeoutData });
   sendSocketMessage({ type: 'timeout-data', timeoutData });
   
@@ -737,7 +812,7 @@ function startHalftime(remainingSeconds = 15 * 60) {
     remaining: totalSeconds,
   };
   
-  localStorage.setItem('halftime-data', JSON.stringify(halftimeData));
+  localStorage.setItem(storageKey('halftime-data'), JSON.stringify(halftimeData));
   broadcastSyncMessage({ type: 'halftime-data', halftimeData });
   sendSocketMessage({ type: 'halftime-data', halftimeData });
   
@@ -848,6 +923,13 @@ function wireEvents() {
     infoLink.addEventListener('click', showInfoPopup);
   }
 
+  if (openProjectionBtn) {
+    openProjectionBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      openProjectionWindow();
+    });
+  }
+
   if (closeInfoModal) {
     closeInfoModal.addEventListener('click', hideInfoPopup);
   }
@@ -855,9 +937,9 @@ function wireEvents() {
   resetBtn.addEventListener('click', resetMatch);
 }
 
-function init() {
+async function init() {
   // Check if there's a saved state in localStorage
-  const savedState = localStorage.getItem('bva-match-state');
+  const savedState = localStorage.getItem(storageKey('bva-match-state'));
   if (savedState) {
     const state = JSON.parse(savedState);
     homePlayers = state.homePlayers;
@@ -898,6 +980,7 @@ function init() {
   wireEvents();
   renderRoster();
   saveState();
+  updateProjectionLink();
 
   if (accessCodeInput) {
     accessCodeInput.focus();
