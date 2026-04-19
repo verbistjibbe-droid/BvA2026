@@ -29,6 +29,7 @@ const closeInfoModal = document.getElementById('closeInfoModal');
 const openProjectionBtn = document.getElementById('openProjectionBtn');
 set(ref(db, "projectie/tekst"), value);
 onValue(ref(db, "projectie/tekst"), callback);
+
 let lastScoreText = 'Geen recente score';
 
 
@@ -283,10 +284,7 @@ function storageKey(key) {
 
 
 function getProjectionLink() {
-  if (location.protocol === 'http:' || location.protocol === 'https:') {
-    return `${location.origin}/projection.html`;
-  }
-  return `projection.html`;
+  return `${window.location.pathname.replace('index.html','')}projection.html`;
 }
 
 openProjectionBtn.onclick = () => {
