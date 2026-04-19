@@ -15,15 +15,6 @@ const pregamePlayerRow = document.getElementById('pregamePlayerRow');
 const pregamePlayerNumber = document.getElementById('pregamePlayerNumber');
 const pregamePlayerName = document.getElementById('pregamePlayerName');
 
-const pathname = window.location.pathname.replace(/^\//, '');
-let matchId = null;
-if (pathname && !pathname.includes('.') && pathname !== 'projection.html') {
-  matchId = pathname;
-}
-if (!matchId) {
-  matchId = new URLSearchParams(window.location.search).get('category') || new URLSearchParams(window.location.search).get('match');
-}
-
 let currentState = {
   homeName: 'TEAM A',
   awayName: 'TEAM B',
