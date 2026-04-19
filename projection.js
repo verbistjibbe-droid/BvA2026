@@ -1,24 +1,3 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
-
-const firebaseConfig = {
-  apiKey: "AIzaSyCxK5viUAlm9D4kPpNWBvmmUukXk3MIqIg",
-  authDomain: "bva2026.firebaseapp.com",
-  projectId: "bva2026",
-  storageBucket: "bva2026.firebasestorage.app",
-  messagingSenderId: "738740536025",
-  appId: "1:738740536025:web:db80dfdb31fc2ad86534c8",
-  measurementId: "G-RPKGVM29YW"
-};
-
-const app = initializeApp(firebaseConfig);
-const db = getDatabase(app);
-
-window.db = db;
-window.ref = ref;
-window.set = set;
-window.onValue = onValue;
-
 const projHomeName = document.getElementById('projHomeName');
 const projAwayName = document.getElementById('projAwayName');
 const projHomeScore = document.getElementById('projHomeScore');
