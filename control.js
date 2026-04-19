@@ -27,12 +27,8 @@ const infoLink = document.getElementById('infoLink');
 const infoModal = document.getElementById('infoModal');
 const closeInfoModal = document.getElementById('closeInfoModal');
 const openProjectionBtn = document.getElementById('openProjectionBtn');
-let currentMatchId = null;
-const syncChannel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('bva-sync') : null;
-const socket = (location.protocol === 'http:' || location.protocol === 'https:')
-  ? new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`)
-  : null;
-const socketQueue = [];
+set(ref(db, "projectie/tekst"), value);
+onValue(ref(db, "projectie/tekst"), callback);
 let lastScoreText = 'Geen recente score';
 
 
