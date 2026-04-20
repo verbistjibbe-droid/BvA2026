@@ -187,27 +187,27 @@
 
   <script src="control.js"></script>
   <script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getDatabase, ref, set } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import { getDatabase, ref, set } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
-const firebaseConfig = {
-  apiKey: "AIzaSyD95lVPSZ5i-RGsDhzUT5osLO0zO0pDPSQ",
-  authDomain: "bva2026projectie.firebaseapp.com",
-  databaseURL: "https://bva2026projectie-default-rtdb.europe-west1.firebasedatabase.app",
-  projectId: "bva2026projectie",
-  storageBucket: "bva2026projectie.firebasestorage.app",
-  messagingSenderId: "33248904631",
-  appId: "1:33248904631:web:f931c1b853c6b74bf05432",
-  measurementId: "G-3KRWHBV5RB"
-};
+    const firebaseConfig = {
+      apiKey: "AIzaSyD95lVPSZ5i-RGsDhzUT5osLO0zO0pDPSQ",
+      authDomain: "bva2026projectie.firebaseapp.com",
+      databaseURL: "https://bva2026projectie-default-rtdb.europe-west1.firebasedatabase.app",
+      projectId: "bva2026projectie",
+      storageBucket: "bva2026projectie.firebasestorage.app",
+      messagingSenderId: "33248904631",
+      appId: "1:33248904631:web:f931c1b853c6b74bf05432",
+      measurementId: "G-3KRWHBV5RB"
+    };
 
-const app = initializeApp(firebaseConfig);
-const db = getDatabase(app);
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
 
-window.sendText = function () {
-  const tekst = document.getElementById("tekstvak").value;
-  set(ref(db, "projectie/tekst"), tekst);
-};
-</script>
+    window.sendText = function () {
+      const tekst = document.getElementById("tekstvak").value;
+      set(ref(db, "projectie/tekst"), tekst);
+    };
+  </script>
 </body>
 </html>
