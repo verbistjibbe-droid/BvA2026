@@ -27,11 +27,12 @@ const infoLink = document.getElementById('infoLink');
 const infoModal = document.getElementById('infoModal');
 const closeInfoModal = document.getElementById('closeInfoModal');
 const openProjectionBtn = document.getElementById('openProjectionBtn');
-set(ref(db, "projectie/tekst"), value);
-onValue(ref(db, "projectie/tekst"), callback);
 
 let lastScoreText = 'Geen recente score';
-
+let socket = null;
+let socketQueue = [];
+let currentMatchId = null;
+let syncChannel = null;
 
 const initialHomePlayers = [
   { number: 4, name: 'Player A', points: 0, fouls: 0, team: 'home', onField: false },
@@ -287,9 +288,11 @@ function getProjectionLink() {
   return `${window.location.pathname.replace('index.html','')}projection.html`;
 }
 
-openProjectionBtn.onclick = () => {
-  window.open(getProjectionLink(), '_blank');
-};
+if (openProjectionBtn) {
+  openProjectionBtn.onclick = () => {
+    window.open(getProjectionLink(), '_blank');
+  };
+}
 
 function updateProjectionLink() {
   if (openProjectionBtn) {
