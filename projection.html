@@ -1,8 +1,6 @@
 <!DOCTYPE html>
 <html lang="nl">
 <head>
-<script type="module">
-</script>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>BvA - Projectie</title>
@@ -65,7 +63,7 @@
             <div class="team-score" id="timeoutProjAwayScore">0</div>
           </div>
         </div>
-        <div class="timeout-bottom-score last-score-display" id="timeoutLastScoreDisplay">Laatste score: geen recente score</div>
+        <div class="timeout-bottom-score last-score-display" id="timeoutLastScoreDisplay">Laatste actie: geen recente score</div>
         <div class="popup-actions"></div>
       </div>
     </div>
@@ -91,7 +89,7 @@
   <script src="projection.js"></script>
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-    import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+    import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyD95lVPSZ5i-RGsDhzUT5osLO0zO0pDPSQ",
@@ -107,8 +105,15 @@
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
 
+    // expose firebase helpers expected by projection/control scripts
+    window.db = db;
+    window.ref = ref;
+    window.onValue = onValue;
+    window.setFirebase = (r, value) => set(r, value);
+
     onValue(ref(db, "projectie/tekst"), (snapshot) => {
-      document.getElementById("screen").innerText = snapshot.val() || "";
+      const el = document.getElementById("screen");
+      if (el) el.innerText = snapshot.val() || "";
     });
   </script>
 </body>
