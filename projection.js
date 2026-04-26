@@ -189,9 +189,9 @@ function formatTime(seconds) {
 function getStoredLastScore() {
   try {
     const stored = JSON.parse(localStorage.getItem(storageKey('last-score')) || 'null');
-    return stored && stored.text ? stored.text : 'geen recente score';
+    return stored && stored.text ? stored.text : (currentState.lastScoreText || 'geen recente score');
   } catch (e) {
-    return 'geen recente score';
+    return currentState.lastScoreText || 'geen recente score';
   }
 }
 
@@ -528,7 +528,8 @@ function showPopup(popupData) {
   const mainDisplay = document.querySelector('.main-display');
   
   // Build popup content
-  const typeLabel = type === 'FOUT' ? 'Fout' : type;
+  // Map simple 'P' to 'FOUT' for display consistency
+  const typeLabel = (type === 'FOUT' || type === 'P') ? 'FOUT' : type;
   const playerDisplay = `${typeLabel} nummer ${player.number}: ${player.name}`;
   
   // Build stats
@@ -542,10 +543,18 @@ function showPopup(popupData) {
     statsHTML += `<span>${player.fouls > 0 ? foulsText : ''}</span>`;
     statsHTML += '</div>';
   }
+
+  // If free-throw shooter info provided, include it
+  const shooterHTML = popupData && popupData.shooterText ? `<div class="popup-shooter">${popupData.shooterText}</div>` : '';
+
+  // Show team name prominently above message
+  const teamLabel = player.team === 'home' ? currentState.homeName : currentState.awayName;
   
   popup.innerHTML = `<div class="popup-content">
+    <div class="popup-team">${teamLabel}</div>
     <div class="popup-title">${playerDisplay}</div>
     ${statsHTML}
+    ${shooterHTML}
   </div>`;
   
   popup.classList.add('visible');
@@ -688,5 +697,74 @@ setInterval(() => {
 window.addEventListener('resize', () => {
   fitPlayerLists();
 });
+
+// Attach Firebase listeners when firebase is available
+function setupFirebaseListenersProjection() {
+  if (!window.onValue || !window.ref || !window.db) {
+    setTimeout(setupFirebaseListenersProjection, 150);
+    return;
+  }
+
+  window.onValue(window.ref(window.db, 'state'), (snapshot) => {
+    const state = snapshot.val();
+    if (state) {
+      currentState = state;
+      renderProjection();
+    }
+  });
+
+  window.onValue(window.ref(window.db, 'popup'), (snapshot) => {
+    const data = snapshot.val();
+    if (data) {
+      showPopup(data);
+      try { window.setFirebase(window.ref(window.db, 'popup'), null); } catch (e) {}
+    }
+  });
+
+  window.onValue(window.ref(window.db, 'timeoutData'), (snapshot) => {
+    const data = snapshot.val();
+    if (data && !currentCountdownType) {
+      startTimeoutCountdown(data);
+    }
+  });
+
+  window.onValue(window.ref(window.db, 'halftimeData'), (snapshot) => {
+    const data = snapshot.val();
+    if (data && !currentCountdownType) {
+      startHalftimeCountdown(data);
+    }
+  });
+
+  window.onValue(window.ref(window.db, 'pregameAction'), (snapshot) => {
+    const action = snapshot.val();
+    if (action) handlePregameAction(action);
+  });
+
+  window.onValue(window.ref(window.db, 'lastScore'), (snapshot) => {
+    const data = snapshot.val();
+    if (data) {
+      currentState.lastScoreText = data.text;
+      updateLastScoreDisplay();
+    }
+  });
+
+  window.onValue(window.ref(window.db, 'timeoutAction'), (snapshot) => {
+    const action = snapshot.val();
+    if (action && action.type === 'stop') {
+      stopTimeout();
+      try { window.setFirebase(window.ref(window.db, 'timeoutAction'), null); } catch (e) {}
+    }
+  });
+
+  window.onValue(window.ref(window.db, 'halftimeAction'), (snapshot) => {
+    const action = snapshot.val();
+    if (action && action.type === 'stop') {
+      stopHalftime();
+      try { window.setFirebase(window.ref(window.db, 'halftimeAction'), null); } catch (e) {}
+    }
+  });
+}
+
+setupFirebaseListenersProjection();
 
 loadState();
