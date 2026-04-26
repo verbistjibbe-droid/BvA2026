@@ -16,9 +16,30 @@
 body {
   margin: 0;
   font-family: Inter, system-ui, sans-serif;
-  min-height: 100vh;
+  height: 100vh;
   background: var(--bg);
   color: var(--text);
+  overflow: hidden;
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.container {
+  display: grid;
+  grid-template-columns: 1fr 0.8fr 1fr;
+  height: 100vh;
+  gap: 10px;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden; /* geen scroll */
 }
 
 .projection-body {
@@ -29,11 +50,15 @@ body {
 .control-shell {
   width: min(100%, 1200px);
   max-width: 1200px;
-  margin: 0 auto;
-  padding: 24px;
+  margin: 8px auto;
+  padding: 12px;
   background: var(--panel);
-  border-radius: 22px;
-  margin: 20px auto;
+  border-radius: 16px;
+  box-sizing: border-box;
+  max-height: calc(100vh - 16px);
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
 }
 
 .control-shell header {
@@ -78,6 +103,14 @@ body {
   font-size: 0.9rem;
   cursor: pointer;
   transition: all 0.2s ease;
+}
+
+.period-btn.small {
+  min-width: 34px;
+  height: 34px;
+  font-size: 0.8rem;
+  border-radius: 8px;
+  padding: 6px 8px;
 }
 
 .period-btn:hover {
@@ -146,11 +179,6 @@ body {
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
   color: white;
   text-align: center;
-}
-
-.login-box h2 {
-  margin: 0 0 10px;
-  font-size: 1.4rem;
 }
 
 .access-input {
@@ -447,18 +475,26 @@ body {
   box-shadow: 0 0 12px rgba(255, 255, 255, 0.1);
 }
 
-.control-grid {
+.control-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
-  gap: 40px;
-  margin-bottom: 20px;
-  align-items: start;
+  /* Fullscreen 3-column layout: left = thuis, center = bediening, right = uitploeg */
+  grid-template-columns: 34% 32% 34%;
+  gap: 10px;
+  margin-bottom: 6px;
+  flex: 1;
+  min-height: 0; /* allow children to shrink */
+  height: calc(100vh - 40px);
 }
 
 .team-section {
   display: grid;
   gap: 12px;
   min-width: 0;
+}
+
+team-column, .control-center {
+  min-height: 0;
+  overflow: visible;
 }
 
 .team-section .team-input {
@@ -468,11 +504,11 @@ body {
 .player-list {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 8px;
   min-height: 0;
   padding-right: 4px;
-  overflow: visible;
-  max-height: none;
+  overflow: auto;
+  max-height: 100%;
 }
 
 .radio-description {
@@ -535,6 +571,8 @@ body {
   display: grid;
   width: 100%;
   box-sizing: border-box;
+  min-height: 50px;
+  height: 8vh;
   gap: 8px;
   padding: 10px;
   border-radius: 18px;
@@ -576,6 +614,11 @@ body {
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
 }
 
+.player-number.small {
+  width: 40px;
+  height: 40px;
+}
+
 .player-name {
   flex: 1;
   margin-left: 10px;
@@ -583,6 +626,10 @@ body {
   min-width: 0;
   white-space: normal;
   word-break: break-word;
+}
+
+.player-box {
+  padding: 8px 10px;
 }
 
 .action-row {
@@ -895,13 +942,13 @@ body {
   display: grid;
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  gap: 10px;
-  padding: clamp(20px, 2.5vw, 28px);
+  gap: 8px;
+  padding: 12px;
   background: var(--panel);
-  border-radius: 28px;
+  border-radius: 18px;
   border: 1px solid var(--red);
   width: 100%;
-  min-height: 220px;
+  min-height: 120px;
 }
 
 .score-block {
@@ -946,6 +993,8 @@ body {
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: rgba(255, 255, 255, 0.8);
+  text-align: center;
+  display: block;
 }
 
 .score-value {
@@ -1138,7 +1187,7 @@ body {
   inset: 0;
   display: grid;
   place-items: center;
-  background: rgba(139, 0, 0, 0.95);
+  background: rgb(139, 0, 0);
   color: white;
   padding: 24px;
   opacity: 0;
@@ -1157,8 +1206,16 @@ body {
   border-radius: 28px;
   padding: 40px 50px;
   text-align: center;
-  background: rgba(139, 0, 0, 0.98);
+  background: rgb(139, 0, 0);
   box-shadow: 0 0 40px rgba(0, 0, 0, 0.5);
+}
+
+.popup-team {
+  font-size: 1.1rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+  letter-spacing: 0.08em;
 }
 
 .popup-title {
@@ -1192,7 +1249,7 @@ body {
   display: flex;
   justify-content: center;
   align-items: center;
-  background: rgba(139, 0, 0, 0.96);
+  background: rgb(139, 0, 0);
   color: white;
   padding: 24px;
   opacity: 1;
@@ -1213,7 +1270,7 @@ body {
   display: flex;
   justify-content: center;
   align-items: center;
-  background: rgba(0, 0, 0, 0.7);
+  background: rgb(0, 0, 0);
   color: white;
   padding: 24px;
   opacity: 1;
@@ -1305,6 +1362,433 @@ body {
   border-radius: 24px;
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+/* NEW CONTROL LAYOUT STYLES */
+.control-layout {
+  display: grid;
+  grid-template-columns: 30% 40% 30%;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.team-column {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+}
+
+.team-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 12px;
+  border-radius: 12px;
+}
+
+.team-name-input {
+  flex: 1;
+  padding: 8px;
+  border: none;
+  border-radius: 6px;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.team-color-input {
+  width: 50px;
+  height: 38px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.edit-btn {
+  width: 38px;
+  height: 38px;
+  border: none;
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  font-size: 1.2rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.edit-btn:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.players-grid {
+  display: grid;
+  grid-auto-rows: min-content;
+  gap: 6px;
+  flex: 1;
+  padding: 6px;
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: 12px;
+  align-items: start;
+  min-height: 0;
+  overflow: visible; /* ensure no internal scrolling */
+}
+
+.players-grid.compact .player-box {
+  padding: 8px 10px;
+  min-height: 40px;
+}
+
+.players-grid.compact .player-box-number {
+  font-size: 1.2rem;
+}
+
+.player-box {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 2px solid rgba(255,255,255,0.06);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.14);
+  cursor: pointer;
+  transition: all 0.12s;
+  width: 100%;
+  min-height: 44px;
+  box-sizing: border-box;
+}
+
+.player-box:hover {
+  background: rgba(0, 0, 0, 0.3);
+  transform: none;
+}
+
+.player-box.selected {
+  box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+  transform: none;
+}
+
+.player-box-number {
+  font-size: clamp(0.95rem, 1.6vw, 1.4rem);
+  font-weight: 700;
+  color: white;
+  min-width: 34px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  border-radius: 6px;
+  padding: 4px;
+}
+
+.player-box-name {
+  font-size: 0.85rem;
+  text-align: left;
+  color: rgba(255, 255, 255, 0.8);
+  flex: 1;
+  word-break: break-word;
+}
+
+.add-player-btn {
+  padding: 12px;
+  border: 2px dashed rgba(255, 255, 255, 0.3);
+  background: transparent;
+  color: white;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.add-player-btn:hover {
+  border-color: rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* Control Center Column */
+.control-center {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: rgba(0, 0, 0, 0.12);
+  padding: 10px;
+  border-radius: 10px;
+  align-items: stretch;
+  justify-content: space-between;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Side column styling: only show numbers */
+.team-column .player-box-name {
+  display: none;
+}
+
+.team-column .player-box {
+  width: 100%;
+  padding: 10px 8px;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  border-width: 2px;
+  margin: 6px 0;
+  box-sizing: border-box;
+}
+
+.team-column .player-box-number {
+  font-size: 1.6rem;
+  font-weight: 800;
+  min-width: 48px;
+  height: 48px;
+  display: inline-grid;
+  place-items: center;
+  text-align: center;
+  border-radius: 8px;
+}
+
+.team-column .player-box.selected {
+  background: rgba(255,255,255,0.03);
+}
+
+.player-box.selected .player-box-number {
+  box-shadow: 0 0 0 3px rgba(255,255,255,0.03) inset;
+}
+
+/* Left/right splitting inside a team column */
+.team-players-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  align-items: start;
+  min-height: 0;
+  flex: 1; /* fill vertical space in the team column */
+}
+
+.team-header {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.team-header .team-name-input {
+  flex: 1;
+}
+.selected-player-info {
+  text-align: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 2px solid transparent;
+  border-radius: 12px;
+}
+
+.player-number-large {
+  font-size: 3rem;
+  font-weight: 700;
+  color: var(--yellow);
+  margin-bottom: 8px;
+}
+
+.player-name-large {
+  font-size: 1.2rem;
+  color: white;
+  font-weight: 600;
+}
+
+.scoring-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.points-section,
+.fouls-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+}
+
+.points-row,
+.fouls-row {
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+  justify-content: center;
+  align-items: center;
+}
+
+.fouls-section h3,
+.points-section h3 {
+  margin: 0;
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.7);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+.foul-btn,
+.points-btn {
+  padding: 8px 12px;
+  border: none;
+  background: rgba(255, 255, 255, 0.16);
+  color: white;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all 0.12s;
+  min-width: 56px;
+  text-align: center;
+}
+.foul-btn:hover,
+.points-btn:hover {
+  background: rgba(255, 255, 255, 0.26);
+}
+
+.foul-btn:active,
+.points-btn:active {
+  transform: none;
+}
+
+.player-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+  text-align: center;
+}
+
+.stat {
+  font-size: 0.95rem;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.stat span {
+  font-weight: 700;
+  color: var(--yellow);
+}
+
+/* Edit Modal */
+.player-edit-modal {
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+/* Larger edit modal for player management */
+.player-edit-modal .modal-content {
+  max-width: 780px;
+  width: 96%;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 1.5rem;
+  cursor: pointer;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+}
+
+.player-edit-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.control-on-field-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #22c55e;
+  margin-left: 8px;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.player-edit-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+}
+
+.edit-number {
+  min-width: 50px;
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.edit-name {
+  flex: 1;
+}
+
+.edit-icon-btn {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: background 0.2s;
+}
+
+.edit-icon-btn:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.form-group {
+  margin-bottom: 12px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.form-group input {
+  width: 100%;
+  padding: 10px;
+  border: none;
+  border-radius: 6px;
+  font-size: 1rem;
+  box-sizing: border-box;
+}
+
+/* Hide old control-grid on control page */
+.control-grid {
+  display: none;
+}
+
+.bottom-controls {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 8px;
 }
 
 .pregame-number {
@@ -1517,4 +2001,103 @@ body {
   width: 34px;
   height: 34px;
   font-size: 0.85rem;
+}
+
+/* Foul Modal */
+#foulModal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+}
+
+#foulModal.hidden {
+  display: none;
+}
+
+#foulModal .modal-content {
+  background: var(--bg);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 20px;
+  padding: 32px;
+  max-width: 500px;
+  width: 90%;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.3);
+}
+
+#foulModal h3 {
+  font-size: 1.5rem;
+  color: white;
+  margin-bottom: 12px;
+  text-align: center;
+}
+
+#foulModal p {
+  color: rgba(255, 255, 255, 0.8);
+  text-align: center;
+  margin-bottom: 24px;
+  font-size: 1rem;
+}
+
+.foul-player-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.foul-player-option {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.foul-player-option:hover {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.4);
+  transform: translateX(4px);
+}
+
+.foul-player-number {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--yellow);
+  min-width: 30px;
+  text-align: center;
+}
+
+.foul-player-name {
+  font-size: 1rem;
+  color: white;
+  flex: 1;
+}
+
+/* Make sizing predictable */
+* { box-sizing: border-box; }
+
+html, body {
+  width: 100vw;
+  height: 100vh;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+.player-number-large {
+  font-size: clamp(1.6rem, 3.4vw, 2.2rem);
+  font-weight: 700;
+  color: var(--yellow);
+  margin-bottom: 8px;
 }
