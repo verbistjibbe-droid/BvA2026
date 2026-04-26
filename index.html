@@ -1,5 +1,317 @@
 <!DOCTYPE html>
+<html lang="nl"><!DOCTYPE html>
 <html lang="nl">
+<head>
+<script type="module">
+</script>
+
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BvA - Bediening</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="loginOverlay" class="login-overlay">
+    <div class="login-box">
+      <h2>Toegangscode vereist</h2>
+      <p>Voer de code in om het bedieningsscherm te openen.</p>
+      <input id="accessCodeInput" class="access-input" type="password" placeholder="Toegangscode">
+      <div id="accessError" class="error-text hidden">Ongeldige code. Probeer het opnieuw.</div>
+      <button id="accessCodeSubmit" class="action-button">Openen</button>
+    </div>
+  </div>
+
+  <div class="control-shell">
+    <header>
+      <h1></h1>
+    </header>
+
+    <div id="infoModal" class="modal hidden">
+      <div class="modal-content info-modal-content">
+        <div class="info-modal-header">
+          <button id="closeInfoModal" class="action-button exit-button">EXIT</button>
+          <div class="info-modal-title">Bij extra vragen ga naar Jibbe Verbist</div>
+        </div>
+        <p class="modal-description">Hieronder vindt u de nodige info om de wedstrijd makkelijk te projecteren.</p>
+
+        <div class="info-section">
+          <h4>SPELERS TOEVOEGEN</h4>
+          <p>Klik op '+ speler toevoegen' en voer dan de spelersnaam en nummer in. Druk op 'Opslaan' om de speler toe te voegen.</p>
+        </div>
+
+        <div class="info-section">
+          <h4>SPELERS BEWERKEN</h4>
+          <p>Klik op het potloodje bij een speler, pas nummer of naam aan en klik op 'Opslaan'. Gebruik 'Annuleer' als je geen wijziging wilt doorvoeren.</p>
+        </div>
+
+        <div class="info-section">
+          <h4>SPELERS OP HET VELD ZETTEN</h4>
+          <p>Klik op de nummer van de speler om hem in of uit het veld te zetten. Spelers die op het veld staan hun nummer is gekleurd.</p>
+        </div>
+
+        <div class="info-section">
+          <h4>SPELERS VERVANGEN</h4>
+          <p>Zet eerst een speler uit het veld en zet daarna een andere speler op het veld door op zijn nummer te klikken.</p>
+        </div>
+
+        <div class="info-section">
+          <h4>TIME-OUT STARTEN</h4>
+          <p>Klik op 'Time-out', kies het team en druk op 'Start'. Het projectiescherm toont de time-out. Vergeet nadien de time-out niet te stoppen.</p>
+        </div>
+
+        <div class="info-section">
+          <h4>PRE-GAME</h4>
+          <p>De pre-game wordt door Jibbe Verbist uitgevoerd. Kies het startteam en gebruik 'START PREGAME' of 'Klaarzetten' om de show voor te bereiden.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- scoreboard moved into middle control column -->
+
+    <div id="activeEventPrompt" class="event-prompt hidden">
+      <span id="activePromptMessage"></span>
+      <button id="stopEventBtn" class="action-button">Stop</button>
+    </div>
+
+    <!-- Timeout Modal -->
+    <div id="timeoutModal" class="modal hidden">
+      <div class="modal-content">
+        <h3>Time-out</h3>
+        <p class="modal-description">Kies het team en start de time-out zonder extra klokinstelling.</p>
+        <div class="team-checkboxes">
+          <label>
+            <input type="radio" name="timeout-team" value="home" />
+            <span id="homeTeamLabel">TEAM A</span>
+          </label>
+          <label>
+            <input type="radio" name="timeout-team" value="away" />
+            <span id="awayTeamLabel">TEAM B</span>
+          </label>
+        </div>
+        <div class="modal-actions">
+          <button id="startTimeoutBtn" class="action-button">Start</button>
+          <button id="cancelTimeoutBtn" class="action-button">Annuleer</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="pregameModal" class="modal hidden">
+      <div class="modal-content">
+        <h3>Pre-game show</h3>
+        <p class="modal-description">Kies of je alleen de opening klaarzet of direct de pregame laat starten.</p>
+        <div class="team-checkboxes">
+          <label>
+            <input type="radio" name="pregame-team" value="home" />
+            <span id="pregameHomeLabel">TEAM A</span>
+          </label>
+          <label>
+            <input type="radio" name="pregame-team" value="away" />
+            <span id="pregameAwayLabel">TEAM B</span>
+          </label>
+        </div>
+        <div class="modal-actions pregame-actions">
+          <button id="preparePregameBtn" type="button" class="action-button">Klaarzetten</button>
+          <button id="startPregameBtn" type="button" class="action-button">START PREGAME</button>
+          <button id="nextPlayerBtn" type="button" class="action-button hidden">Volgende speler</button>
+          <button id="finishPregameBtn" type="button" class="action-button hidden">Pregame voltooien</button>
+          <button id="cancelPregameBtn" type="button" class="action-button">Annuleer</button>
+        </div>
+        <div id="pregameStatus" class="modal-description">Kies een startteam om de pregame te starten of klaar te zetten.</div>
+        <div id="pregameLiveText" class="modal-description">Toon: -</div>
+      </div>
+    </div>
+
+    <!-- Halftime Show Modal -->
+    <div id="halftimeModal" class="modal hidden">
+      <div class="modal-content">
+        <h3>Pauze klok</h3>
+        <p class="modal-description">Start de halftime-popup zonder aanvullende klokinstelling.</p>
+        <div class="modal-actions">
+          <button id="startHalftimeBtn" class="action-button">Start</button>
+          <button id="cancelHalftimeBtn" class="action-button">Annuleer</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="control-layout">
+      <!-- Left Column: Home Team -->
+      <div class="team-column home-column">
+          <div class="team-header">
+            <input id="homeName" value="TEAM A" placeholder="Teamnaam" class="team-name-input" />
+            <input id="homeColor" type="color" value="#b22222" class="team-color-input" title="Kies teamkleur" />
+            <button id="homeEditBtn" class="edit-btn" title="Spelers bewerken">✎</button>
+          </div>
+          <div class="team-players-grid">
+            <div class="onfield-section">
+              <h4 class="field-section-title">OP VELD</h4>
+              <div id="homeOnField" class="players-grid onfield-list"></div>
+            </div>
+            <div class="bench-section">
+              <h4 class="bench-section-title">BANK</h4>
+              <div id="homeBench" class="players-grid bench-list"></div>
+            </div>
+          </div>
+      </div>
+
+      <!-- Middle Column: Controls -->
+      <div class="control-center">
+        <div class="top-control-buttons" style="display:flex; gap:8px; margin-bottom:12px;">
+          <button id="timeoutBtn" class="special-btn" style="flex:1;">Time-out</button>
+          <button id="pregameBtn" class="special-btn" style="flex:1; display:none;">Pre-game</button>
+        </div>
+
+        <div class="match-scoreboard" style="margin-bottom:10px;">
+          <div class="score-card home-score-card">
+            <div class="score-team-name" id="controlHomeName">TEAM A</div>
+            <div class="score-value" id="controlHomeScore">0</div>
+          </div>
+          <div class="score-separator">vs</div>
+          <div class="score-card away-score-card">
+            <div class="score-team-name" id="controlAwayName">TEAM B</div>
+            <div class="score-value" id="controlAwayScore">0</div>
+          </div>
+        </div>
+
+        <div class="period-indicators" style="display:flex; gap:8px; justify-content:center; margin-bottom:12px;">
+          <button class="period-btn small" data-period="1">1</button>
+          <button class="period-btn small" data-period="2">2</button>
+          <button class="period-btn small" data-period="3">3</button>
+          <button class="period-btn small" data-period="4">4</button>
+          <button class="period-btn small" data-period="OT">OT</button>
+        </div>
+        <div class="selected-player-info">
+          <div id="selectedPlayerNumber" class="player-number-large">--</div>
+          <div id="selectedPlayerName" class="player-name-large">Selecteer speler</div>
+        </div>
+
+        <div class="player-stats">
+          <div class="stat">Fouten: <span id="selectedPlayerFouls">0</span></div>
+          <div class="stat">Punten: <span id="selectedPlayerPoints">0</span></div>
+        </div>
+
+        <div class="scoring-buttons">
+          <div class="points-section">
+            <h3>Punten</h3>
+            <div class="points-row">
+              <button class="points-btn" data-points="1">+1</button>
+              <button class="points-btn" data-points="2">+2</button>
+              <button class="points-btn" data-points="3">+3</button>
+            </div>
+          </div>
+          <div class="fouls-section">
+            <h3>Fouten</h3>
+            <div class="fouls-row">
+              <button class="foul-btn" data-foul="P">P</button>
+              <button class="foul-btn" data-foul="P1">P1</button>
+              <button class="foul-btn" data-foul="P2">P2</button>
+              <button class="foul-btn" data-foul="P3">P3</button>
+            </div>
+          </div>
+        </div>
+        <div class="info-row" style="margin-top:8px;">
+          <button id="infoLink" class="action-button">INFO</button>
+        </div>
+        
+        <!-- Bottom Control Buttons moved into center column -->
+        <div class="center-bottom">
+          <div class="bottom-controls">
+            <button id="resetBtn" class="action-button">Reset wedstrijd</button>
+            <button id="openProjectionBtn" class="action-button">Open projectiescherm</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Column: Away Team -->
+      <div class="team-column away-column">
+          <div class="team-header">
+            <input id="awayName" value="TEAM B" placeholder="Teamnaam" class="team-name-input" />
+            <input id="awayColor" type="color" value="#dc143c" class="team-color-input" title="Kies teamkleur" />
+            <button id="awayEditBtn" class="edit-btn" title="Spelers bewerken">✎</button>
+          </div>
+          <div class="team-players-grid">
+            <div class="onfield-section">
+              <h4 class="field-section-title">OP VELD</h4>
+              <div id="awayOnField" class="players-grid onfield-list"></div>
+            </div>
+            <div class="bench-section">
+              <h4 class="bench-section-title">BANK</h4>
+              <div id="awayBench" class="players-grid bench-list"></div>
+            </div>
+          </div>
+      </div>
+    </div>
+
+    <!-- Player Edit Modal -->
+    <div id="playerEditModal" class="modal hidden">
+      <div class="modal-content player-edit-modal">
+        <div class="modal-header">
+          <h3 id="editTeamLabel">Spelers bewerken</h3>
+          <button id="closeEditModal" class="close-btn">✕</button>
+        </div>
+        <div id="playerEditList" class="player-edit-list"></div>
+        <div class="modal-actions">
+          <button id="addPlayerBtn" class="action-button">+ Speler toevoegen</button>
+          <button id="closeEditBtn" class="action-button">Klaar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Add Player Modal -->
+    <div id="addPlayerModal" class="modal hidden">
+      <div class="modal-content">
+        <h3>Speler toevoegen</h3>
+        <div class="form-group">
+          <label>Nummer:</label>
+          <input id="newPlayerNumber" type="number" placeholder="Nummer" />
+        </div>
+        <div class="form-group">
+          <label>Naam:</label>
+          <input id="newPlayerName" type="text" placeholder="Naam" />
+        </div>
+        <div class="modal-actions">
+          <button id="savePlayerBtn" class="action-button">Opslaan</button>
+          <button id="cancelAddPlayerBtn" class="action-button">Annuleer</button>
+        </div>
+      </div>
+    </div>
+
+    </div>
+
+    <!-- Bottom Control Buttons removed from here (moved into center column) -->
+  </div>
+
+  <script src="control-new.js"></script>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyD95lVPSZ5i-RGsDhzUT5osLO0zO0pDPSQ",
+      authDomain: "bva2026projectie.firebaseapp.com",
+      databaseURL: "https://bva2026projectie-default-rtdb.europe-west1.firebasedatabase.app",
+      projectId: "bva2026projectie",
+      storageBucket: "bva2026projectie.firebasestorage.app",
+      messagingSenderId: "33248904631",
+      appId: "1:33248904631:web:f931c1b853c6b74bf05432",
+      measurementId: "G-3KRWHBV5RB"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    // expose small wrappers used by the control/projection scripts
+    window.db = db;
+    window.ref = ref;
+    window.setFirebase = (r, value) => set(r, value);
+    window.onValue = onValue;
+
+    window.sendText = function () {
+      const tekst = document.getElementById("tekstvak") ? document.getElementById("tekstvak").value : '';
+      set(ref(db, "projectie/tekst"), tekst);
+    };
+  </script>
+</body>
+</html>
 <head>
 <script type="module">
 </script>
