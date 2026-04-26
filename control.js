@@ -1,251 +1,239 @@
+// --- STATE MANAGEMENT & SYNC ---
+function getCurrentStateFromUI() {
+  return {
+    homeName: homeNameInput.value,
+    awayName: awayNameInput.value,
+    homeTeamColor: homeColorInput.value,
+    awayTeamColor: awayColorInput.value,
+    period: currentPeriod,
+    homePlayers: homePlayers.map(p => ({ ...p })),
+    awayPlayers: awayPlayers.map(p => ({ ...p })),
+    lastScoreText,
+  };
+}
+
+function storageKey(key) {
+  return key;
+}
+
+function pushStateToFirebase() {
+  const state = getCurrentStateFromUI();
+
+  // Prefer Firebase when available
+  if (window.setFirebase && window.ref && window.db) {
+    try {
+      window.setFirebase(window.ref(window.db, 'state'), state);
+      window.setFirebase(window.ref(window.db, 'lastScore'), { text: lastScoreText, timestamp: Date.now() });
+    } catch (e) {
+      console.warn('Firebase write failed', e);
+    }
+  }
+
+  // Always persist locally so refresh doesn't reset the match
+  try {
+    localStorage.setItem(storageKey('bva-match-state'), JSON.stringify(state));
+    localStorage.setItem(storageKey('last-score'), JSON.stringify({ text: lastScoreText, timestamp: Date.now() }));
+  } catch (e) {
+    // ignore
+  }
+
+  sendSocketMessage({ type: 'state', state });
+  updateControlScoreboard();
+}
+// DOM Elements - Login
+const loginOverlay = document.getElementById('loginOverlay');
+const accessCodeInput = document.getElementById('accessCodeInput');
+const accessCodeSubmit = document.getElementById('accessCodeSubmit');
+const accessError = document.getElementById('accessError');
+
+// DOM Elements - Main
 const homeNameInput = document.getElementById('homeName');
 const awayNameInput = document.getElementById('awayName');
 const homeColorInput = document.getElementById('homeColor');
 const awayColorInput = document.getElementById('awayColor');
-const homePlayersEl = document.getElementById('homePlayers');
-const awayPlayersEl = document.getElementById('awayPlayers');
-const resetBtn = document.getElementById('resetBtn');
-const pregameBtn = document.getElementById('pregameBtn');
-const pregameModal = document.getElementById('pregameModal');
-const pregameStatus = document.getElementById('pregameStatus');
-const controlHomeName = document.getElementById('controlHomeName');
-const controlAwayName = document.getElementById('controlAwayName');
-const controlHomeScore = document.getElementById('controlHomeScore');
-const controlAwayScore = document.getElementById('controlAwayScore');
-const preparePregameBtn = document.getElementById('preparePregameBtn');
-const startPregameBtn = document.getElementById('startPregameBtn');
-const nextPlayerBtn = document.getElementById('nextPlayerBtn');
-const cancelPregameBtn = document.getElementById('cancelPregameBtn');
+const homeOnFieldEl = document.getElementById('homeOnField');
+const homeBenchEl = document.getElementById('homeBench');
+const awayOnFieldEl = document.getElementById('awayOnField');
+const awayBenchEl = document.getElementById('awayBench');
+
+// DOM Elements - Selection
+const selectedPlayerNumberEl = document.getElementById('selectedPlayerNumber');
+const selectedPlayerNameEl = document.getElementById('selectedPlayerName');
+const selectedPlayerFoulsEl = document.getElementById('selectedPlayerFouls');
+const selectedPlayerPointsEl = document.getElementById('selectedPlayerPoints');
+const selectedPlayerInfoEl = document.querySelector('.selected-player-info');
+
+// DOM Elements - Modals
+const playerEditModal = document.getElementById('playerEditModal');
+const playerEditList = document.getElementById('playerEditList');
+const addPlayerBtn = document.getElementById('addPlayerBtn');
+const closeEditBtn = document.getElementById('closeEditBtn');
+const editTeamLabel = document.getElementById('editTeamLabel');
+
+const addPlayerModal = document.getElementById('addPlayerModal');
+const newPlayerNumber = document.getElementById('newPlayerNumber');
+const newPlayerName = document.getElementById('newPlayerName');
+const savePlayerBtn = document.getElementById('savePlayerBtn');
+const cancelAddPlayerBtn = document.getElementById('cancelAddPlayerBtn');
+
+const timeoutModal = document.getElementById('timeoutModal');
+const halftimeModal = document.getElementById('halftimeModal');
 const activeEventPrompt = document.getElementById('activeEventPrompt');
 const activePromptMessage = document.getElementById('activePromptMessage');
 const stopEventBtn = document.getElementById('stopEventBtn');
-const accessCodeInput = document.getElementById('accessCodeInput');
-const accessCodeSubmit = document.getElementById('accessCodeSubmit');
-const loginOverlay = document.getElementById('loginOverlay');
-const accessError = document.getElementById('accessError');
+
+// DOM Elements - Foul Modal
+const foulModal = document.createElement('div');
+foulModal.id = 'foulModal';
+foulModal.className = 'modal hidden';
+document.body.append(foulModal);
+
+// DOM Elements - Buttons
+const resetBtn = document.getElementById('resetBtn');
+const openProjectionBtn = document.getElementById('openProjectionBtn');
+const timeoutBtn = document.getElementById('timeoutBtn');
+const pregameBtn = document.getElementById('pregameBtn');
+const pregameModal = document.getElementById('pregameModal');
 const infoLink = document.getElementById('infoLink');
 const infoModal = document.getElementById('infoModal');
 const closeInfoModal = document.getElementById('closeInfoModal');
-const openProjectionBtn = document.getElementById('openProjectionBtn');
 
-let syncChannel = typeof BroadcastChannel !== 'undefined'
-  ? new BroadcastChannel('bva-sync')
-  : null;
+// State
 let lastScoreText = 'Geen recente score';
 let socket = null;
 let socketQueue = [];
 
+// Pregame state
+let pregameTeamOrder = [];
+let pregameCurrentTeamIndex = 0;
+let pregamePlayerIndex = -1; // -1 means show team name next
+
+function sendPregameAction(action) {
+  window.setFirebase(window.ref(window.db, 'pregameAction'), action);
+  sendSocketMessage({ type: 'pregame-action', action });
+}
+
+function openPregameModal() {
+  if (!pregameModal) return;
+  document.getElementById('pregameHomeLabel').textContent = homeNameInput.value;
+  document.getElementById('pregameAwayLabel').textContent = awayNameInput.value;
+  pregameModal.classList.remove('hidden');
+}
+
+function closePregameModal() {
+  if (!pregameModal) return;
+  pregameModal.classList.add('hidden');
+}
+
+function preparePregame() {
+  sendPregameAction({ type: 'preparePregame', screenMode: 'main' });
+}
+
+function startPregameSequence() {
+  // determine starting team
+  const startTeamInput = document.querySelector('input[name="pregame-team"]:checked');
+  const startTeam = startTeamInput ? startTeamInput.value : 'home';
+  pregameTeamOrder = startTeam === 'home' ? ['home', 'away'] : ['away', 'home'];
+  pregameCurrentTeamIndex = 0;
+  pregamePlayerIndex = -1;
+  // show first team name
+  const teamKey = pregameTeamOrder[pregameCurrentTeamIndex];
+  const teamName = teamKey === 'home' ? homeNameInput.value : awayNameInput.value;
+  sendPregameAction({ type: 'startPregameShow', screenMode: 'main' });
+  sendPregameAction({ type: 'showTeamName', teamName });
+  // Update UI: make start button become the step button and hide the separate next button
+  const startBtn = document.getElementById('startPregameBtn');
+  const nextBtn = document.getElementById('nextPlayerBtn');
+  if (startBtn) {
+    startBtn.textContent = 'Volgende speler';
+    startBtn.onclick = nextPregamePlayer;
+  }
+  if (nextBtn) nextBtn.classList.add('hidden');
+
+  // Update live text in modal
+  const liveEl = document.getElementById('pregameLiveText');
+  if (liveEl) liveEl.textContent = `Toon: ${teamName}`;
+}
+
+function nextPregamePlayer() {
+  const teamKey = pregameTeamOrder[pregameCurrentTeamIndex];
+  const players = teamKey === 'home' ? homePlayers : awayPlayers;
+  if (pregamePlayerIndex === -1) {
+    // show first player
+    pregamePlayerIndex = 0;
+  } else {
+    pregamePlayerIndex += 1;
+  }
+
+  if (pregamePlayerIndex < players.length) {
+    const player = players[pregamePlayerIndex];
+    const teamName = teamKey === 'home' ? homeNameInput.value : awayNameInput.value;
+    sendPregameAction({ type: 'showPlayer', player, teamName });
+    const liveEl = document.getElementById('pregameLiveText');
+    if (liveEl) liveEl.textContent = `Toon: ${teamName} - ${player.number} ${player.name}`;
+    return;
+  }
+
+  // finished current team, move to next team
+  pregameCurrentTeamIndex += 1;
+  pregamePlayerIndex = -1;
+  if (pregameCurrentTeamIndex < pregameTeamOrder.length) {
+    const nextTeamKey = pregameTeamOrder[pregameCurrentTeamIndex];
+    const nextTeamName = nextTeamKey === 'home' ? homeNameInput.value : awayNameInput.value;
+    sendPregameAction({ type: 'showTeamName', teamName: nextTeamName });
+    return;
+  }
+
+  // finished all
+  // finished all — show finish button in modal. Do NOT auto-close projection.
+  const nextBtnEl = document.getElementById('nextPlayerBtn');
+  if (nextBtnEl) nextBtnEl.classList.add('hidden');
+  const finishBtn = document.getElementById('finishPregameBtn');
+  if (finishBtn) {
+    finishBtn.classList.remove('hidden');
+    finishBtn.onclick = () => {
+      sendPregameAction({ type: 'pregameComplete' });
+      closePregameModal();
+      if (pregameBtn) pregameBtn.style.display = 'none';
+      finishBtn.classList.add('hidden');
+      const startBtn = document.getElementById('startPregameBtn');
+      if (startBtn) {
+        startBtn.textContent = 'START PREGAME';
+        startBtn.onclick = startPregameSequence;
+      }
+      const liveEl = document.getElementById('pregameLiveText');
+      if (liveEl) liveEl.textContent = 'Toon: -';
+    };
+  }
+}
+
 const initialHomePlayers = [
-  { number: 4, name: 'Player A', points: 0, fouls: 0, team: 'home', onField: false },
-  { number: 5, name: 'Player B', points: 0, fouls: 0, team: 'home', onField: false },
-  { number: 6, name: 'Player C', points: 0, fouls: 0, team: 'home', onField: false },
-  { number: 7, name: 'Player D', points: 0, fouls: 0, team: 'home', onField: false },
-  { number: 8, name: 'Player E', points: 0, fouls: 0, team: 'home', onField: false },
+  { number: 4, name: 'Speler A', points: 0, fouls: 0, team: 'home', onField: false },
+  { number: 5, name: 'Speler B', points: 0, fouls: 0, team: 'home', onField: false },
+  { number: 6, name: 'Speler C', points: 0, fouls: 0, team: 'home', onField: false },
 ];
 
 const initialAwayPlayers = [
-  { number: 4, name: 'Player A', points: 0, fouls: 0, team: 'away', onField: false },
-  { number: 5, name: 'Player B', points: 0, fouls: 0, team: 'away', onField: false },
-  { number: 6, name: 'Player C', points: 0, fouls: 0, team: 'away', onField: false },
-  { number: 7, name: 'Player D', points: 0, fouls: 0, team: 'away', onField: false },
-  { number: 8, name: 'Player E', points: 0, fouls: 0, team: 'away', onField: false },
+  { number: 4, name: 'Speler A', points: 0, fouls: 0, team: 'away', onField: false },
+  { number: 5, name: 'Speler B', points: 0, fouls: 0, team: 'away', onField: false },
+  { number: 6, name: 'Speler C', points: 0, fouls: 0, team: 'away', onField: false },
 ];
 
 let homePlayers = [];
 let awayPlayers = [];
 let currentPeriod = '1';
-
-function createPlayerCard(player, team) {
-  if (editingPlayer === player && editingTeam === team) {
-    const editCard = document.createElement('div');
-    editCard.className = 'player-card';
-
-    const editRow = document.createElement('div');
-    editRow.className = 'player-edit-row';
-
-    const numberInput = document.createElement('input');
-    numberInput.type = 'number';
-    numberInput.min = '1';
-    numberInput.max = '99';
-    numberInput.value = player.number;
-    numberInput.placeholder = 'Nummer';
-    numberInput.className = 'edit-number-input';
-
-    const nameInput = document.createElement('input');
-    nameInput.type = 'text';
-    nameInput.value = player.name;
-    nameInput.placeholder = 'Naam';
-    nameInput.className = 'edit-name-input';
-
-    const actionWrapper = document.createElement('div');
-    actionWrapper.className = 'player-edit-actions';
-
-    const saveBtn = document.createElement('button');
-    saveBtn.type = 'button';
-    saveBtn.className = 'save-edit-btn';
-    saveBtn.textContent = 'Opslaan';
-    saveBtn.addEventListener('click', () => {
-      const newNumber = parseInt(numberInput.value, 10);
-      const newName = nameInput.value.trim();
-      if (!newNumber || !newName) {
-        alert('Voer alstublieft een nummer en naam in');
-        return;
-      }
-      player.number = newNumber;
-      player.name = newName;
-      editingPlayer = null;
-      editingTeam = null;
-      renderRoster();
-      saveState();
-    });
-
-    const cancelBtn = document.createElement('button');
-    cancelBtn.type = 'button';
-    cancelBtn.className = 'cancel-edit-btn';
-    cancelBtn.textContent = 'Annuleer';
-    cancelBtn.addEventListener('click', () => {
-      editingPlayer = null;
-      editingTeam = null;
-      renderRoster();
-    });
-
-    actionWrapper.append(saveBtn, cancelBtn);
-    editRow.append(numberInput, nameInput, actionWrapper);
-    editCard.append(editRow);
-    return editCard;
-  }
-
-  const card = document.createElement('div');
-  card.className = 'player-card';
-  
-  // Apply team color to the card
-  const teamColor = team === 'home' ? homeColorInput.value : awayColorInput.value;
-  card.style.borderColor = teamColor;
-
-  const topRow = document.createElement('div');
-  const meta = document.createElement('div');
-  meta.className = 'player-meta';
-  const number = document.createElement('div');
-  number.className = 'player-number';
-  number.textContent = player.number;
-  
-  // Apply team color background if player is on field
-  if (player.onField) {
-    number.style.background = teamColor;
-  } else {
-    number.style.background = 'var(--red)';
-  }
-  
-  // Make number clickable
-  number.style.cursor = 'pointer';
-  number.title = player.onField ? 'Klik om uit het veld te zetten' : 'Klik om in het veld in te stellen';
-  number.addEventListener('click', () => togglePlayerOnField(player, team));
-  
-  const name = document.createElement('div');
-  name.className = 'player-name';
-  name.textContent = player.name;
-  meta.append(number, name);
-
-  const scoreBadge = document.createElement('div');
-  scoreBadge.textContent = `${player.points} punten`;
-  scoreBadge.style.color = '#facc15';
-  
-  const editBtn = document.createElement('button');
-  editBtn.type = 'button';
-  editBtn.className = 'edit-btn';
-  editBtn.textContent = '✏️';
-  editBtn.title = 'Speler bewerken';
-  editBtn.addEventListener('click', (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    startEditPlayer(player, team);
-  });
-  
-  topRow.append(meta, scoreBadge, editBtn);
-
-  const actionRow = document.createElement('div');
-  actionRow.className = 'action-row';
-
-  const ftBtn = document.createElement('button');
-  ftBtn.type = 'button';
-  ftBtn.className = 'score-btn';
-  ftBtn.textContent = 'FT';
-  if (!player.onField) {
-    ftBtn.disabled = true;
-    ftBtn.className += ' disabled-btn';
-  }
-  ftBtn.addEventListener('click', () => updatePlayer(player, 1, 'FT'));
-
-  const btn2 = document.createElement('button');
-  btn2.type = 'button';
-  btn2.className = 'score-btn';
-  btn2.textContent = '+2';
-  if (!player.onField) {
-    btn2.disabled = true;
-    btn2.className += ' disabled-btn';
-  }
-  btn2.addEventListener('click', () => updatePlayer(player, 2, '2PT'));
-
-  const btn3 = document.createElement('button');
-  btn3.type = 'button';
-  btn3.className = 'score-btn';
-  btn3.textContent = '+3';
-  if (!player.onField) {
-    btn3.disabled = true;
-    btn3.className += ' disabled-btn';
-  }
-  btn3.addEventListener('click', () => updatePlayer(player, 3, '3PT'));
-
-  const foulBtn = document.createElement('button');
-  foulBtn.type = 'button';
-  foulBtn.className = 'foul-btn';
-  if (!player.onField) {
-    foulBtn.disabled = true;
-    foulBtn.className += ' disabled-btn';
-  }
-  foulBtn.textContent = 'FLS';
-  foulBtn.addEventListener('click', () => addFoul(player));
-
-  actionRow.append(ftBtn, btn2, btn3, foulBtn);
-  card.append(topRow, actionRow);
-  return card;
-}
-
-let editingPlayer = null;
+let selectedPlayer = null;
+let selectedTeam = null;
+let pendingSubstitute = null; // { player, team } when a bench player is selected for substitution
 let editingTeam = null;
+let activeEventType = null;
+let foulShootingPlayer = null; // player shooting free throws
 
-function startEditPlayer(player, team) {
-  editingPlayer = player;
-  editingTeam = team;
-  renderRoster();
-  const input = document.getElementById('edit-number');
-  if (input) input.focus();
-}
-
-function saveEditPlayer() {
-  if (!editingPlayer) return;
-  
-  const newNumber = parseInt(document.getElementById('edit-number').value);
-  const newName = document.getElementById('edit-name').value.trim();
-  
-  if (!newNumber || !newName) {
-    alert('Voer alstublieft een nummer en naam in');
-    return;
+// Access Code Functions
+function hideLoginOverlay() {
+  if (loginOverlay) {
+    loginOverlay.classList.add('hidden');
   }
-  
-  editingPlayer.number = newNumber;
-  editingPlayer.name = newName;
-  
-  renderRoster();
-  saveState();
-  editingPlayer = null;
-  editingTeam = null;
-}
-
-function cancelEditPlayer() {
-  editingPlayer = null;
-  editingTeam = null;
-  renderRoster();
 }
 
 function checkAccessCode() {
@@ -259,67 +247,458 @@ function checkAccessCode() {
   }
 }
 
-function hideLoginOverlay() {
-  if (loginOverlay) {
-    loginOverlay.classList.add('hidden');
+// Player Box Creation
+function createPlayerBox(player, team) {
+  const box = document.createElement('div');
+  box.className = 'player-box';
+  const teamColor = team === 'home' ? homeColorInput.value : awayColorInput.value;
+  // default subtle border; selected state will get the team color
+  box.style.borderColor = 'rgba(255,255,255,0.12)';
+  
+  if (selectedPlayer === player && selectedTeam === team) {
+    box.classList.add('selected');
+    box.style.borderColor = teamColor;
   }
-  if (accessError) {
-    accessError.classList.add('hidden');
-  }
-}
 
-function showInfoPopup() {
-  if (infoModal) {
-    infoModal.classList.remove('hidden');
-  }
-}
-
-function hideInfoPopup() {
-  if (infoModal) {
-    infoModal.classList.add('hidden');
-  }
-}
-
-function storageKey(key) {
-  return key;
-}
-
-
-function getProjectionLink() {
-  return `${window.location.origin}${window.location.pathname.replace(/\/[^\/]*$/, '/')}projection.html`;
-}
-
-if (openProjectionBtn) {
-  openProjectionBtn.onclick = () => {
-    window.open(getProjectionLink(), '_blank');
-  };
-}
-
-function updateProjectionLink() {
-  if (openProjectionBtn) {
-    openProjectionBtn.disabled = false;
-  }
-}
-
-async function openProjectionWindow() {
-  const link = getProjectionLink();
-  if (!link) return;
-
-  if (window.projectionWindow && !window.projectionWindow.closed) {
-    window.projectionWindow.location.href = link;
+  const number = document.createElement('div');
+  number.className = 'player-box-number';
+  number.textContent = player.number;
+  // Visual indicator: team color when on field, default when on bench
+  if (player.onField) {
+    number.style.background = teamColor;
+    number.style.color = '#000';
+    number.style.borderRadius = '8px';
+    number.style.padding = '8px 10px';
   } else {
-    window.projectionWindow = window.open(link, 'projection');
+    number.style.background = 'transparent';
+    number.style.color = '#fff';
   }
+
+  const name = document.createElement('div');
+  name.className = 'player-box-name';
+  name.textContent = player.name;
+
+  // small green dot when player is on the field
+  if (player.onField) {
+    const dot = document.createElement('span');
+    dot.className = 'control-on-field-dot';
+    // place dot next to the number for better visibility in compact columns
+    number.appendChild(dot);
+  }
+
+  box.append(number, name);
+  
+  // Card click implements activation/substitution/selection so whole card is clickable
+  box.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const players = team === 'home' ? homePlayers : awayPlayers;
+    const onFieldCount = players.filter(p => p.onField).length;
+
+    if (!player.onField) {
+      // bench clicked
+      if (onFieldCount < 5) {
+        // activate immediately
+        player.onField = true;
+        pendingSubstitute = null;
+        selectedPlayer = player;
+        selectedTeam = team;
+        updateSelectedPlayerDisplay();
+        renderPlayerGrids();
+        pushStateToFirebase();
+        return;
+      }
+
+      // already 5 on field => mark as pending substitute
+      pendingSubstitute = { player, team };
+      selectedPlayer = player;
+      selectedTeam = team;
+      updateSelectedPlayerDisplay();
+      renderPlayerGrids();
+      return;
+    }
+
+    // on-field clicked
+    if (pendingSubstitute && pendingSubstitute.team === team && pendingSubstitute.player !== player) {
+      const invaller = pendingSubstitute.player;
+      invaller.onField = true;
+      player.onField = false;
+      pendingSubstitute = null;
+      selectedPlayer = invaller;
+      selectedTeam = team;
+      updateSelectedPlayerDisplay();
+      renderPlayerGrids();
+      pushStateToFirebase();
+      return;
+    }
+
+    // otherwise select the on-field player for scoring/fouls
+    selectedPlayer = player;
+    selectedTeam = team;
+    updateSelectedPlayerDisplay();
+    renderPlayerGrids();
+  });
+
+  // Card click selects player for scoring/fouls
+  box.addEventListener('click', () => selectPlayer(player, team));
+  
+  return box;
 }
 
-function broadcastSyncMessage(message) {
-  if (syncChannel) {
-    try {
-      syncChannel.postMessage(message);
-    } catch (error) {
-      console.warn('BroadcastChannel error', error);
+function toggleOnField(clickedPlayer, team) {
+  const players = team === 'home' ? homePlayers : awayPlayers;
+
+  // If a pending substitute exists for this team and clicked player is on-field -> swap
+  if (pendingSubstitute && pendingSubstitute.team === team && clickedPlayer.onField && pendingSubstitute.player !== clickedPlayer) {
+    const invaller = pendingSubstitute.player;
+    invaller.onField = true;
+    clickedPlayer.onField = false;
+    pendingSubstitute = null;
+    selectedPlayer = invaller;
+    selectedTeam = team;
+    updateSelectedPlayerDisplay();
+    renderPlayerGrids();
+    pushStateToFirebase();
+    return;
+  }
+
+  // If clicked player is not on field -> try to put them on field (if slots available)
+  if (!clickedPlayer.onField) {
+    const onFieldCount = players.filter(p => p.onField).length;
+    if (onFieldCount >= 5) {
+      alert('Maximum 5 spelers op het veld');
+      return;
+    }
+    clickedPlayer.onField = true;
+    selectedPlayer = clickedPlayer;
+    selectedTeam = team;
+    updateSelectedPlayerDisplay();
+    renderPlayerGrids();
+    pushStateToFirebase();
+    return;
+  }
+
+  // If clicked player is on-field -> select them (do not remove from field)
+  selectedPlayer = clickedPlayer;
+  selectedTeam = team;
+  updateSelectedPlayerDisplay();
+  renderPlayerGrids();
+}
+
+function selectPlayer(player, team) {
+  selectedPlayer = player;
+  selectedTeam = team;
+  updateSelectedPlayerDisplay();
+  renderPlayerGrids();
+}
+
+function updateSelectedPlayerDisplay() {
+  if (selectedPlayer && selectedTeam) {
+    selectedPlayerNumberEl.textContent = selectedPlayer.number;
+    selectedPlayerNameEl.textContent = selectedPlayer.name;
+    selectedPlayerFoulsEl.textContent = selectedPlayer.fouls;
+    selectedPlayerPointsEl.textContent = selectedPlayer.points;
+    const color = selectedTeam === 'home' ? homeColorInput.value : awayColorInput.value;
+    if (selectedPlayerInfoEl) {
+      selectedPlayerInfoEl.style.border = `2px solid ${color}`;
+      selectedPlayerInfoEl.style.color = '#fff';
+    }
+  } else {
+    selectedPlayerNumberEl.textContent = '--';
+    selectedPlayerNameEl.textContent = 'Selecteer speler';
+    selectedPlayerFoulsEl.textContent = '0';
+    selectedPlayerPointsEl.textContent = '0';
+    if (selectedPlayerInfoEl) {
+      selectedPlayerInfoEl.style.border = '2px solid transparent';
+      selectedPlayerInfoEl.style.color = '';
     }
   }
+}
+
+function renderPlayerGrids() {
+  // Clear both on-field and bench containers
+  if (homeOnFieldEl) homeOnFieldEl.innerHTML = '';
+  if (homeBenchEl) homeBenchEl.innerHTML = '';
+  if (awayOnFieldEl) awayOnFieldEl.innerHTML = '';
+  if (awayBenchEl) awayBenchEl.innerHTML = '';
+
+  // Sort players by number ascending for consistent order
+  const sortedHome = homePlayers.slice().sort((a, b) => a.number - b.number);
+  const sortedAway = awayPlayers.slice().sort((a, b) => a.number - b.number);
+
+  // Helper to render team columns: left = on-field (if any) otherwise half of bench, right = bench or remaining half
+  function renderTeam(sortedList, leftEl, rightEl, teamKey) {
+    const on = sortedList.filter(p => p.onField);
+    const bench = sortedList.filter(p => !p.onField);
+
+    let leftList = [];
+    let rightList = [];
+
+    if (on.length > 0) {
+      leftList = on;
+      rightList = bench;
+    } else {
+      // split bench into two roughly equal columns
+      const half = Math.ceil(bench.length / 2);
+      leftList = bench.slice(0, half);
+      rightList = bench.slice(half);
+    }
+
+    leftList.forEach(p => { if (leftEl) leftEl.append(createPlayerBox(p, teamKey)); });
+    rightList.forEach(p => { if (rightEl) rightEl.append(createPlayerBox(p, teamKey)); });
+
+    // Compact layout when many players
+    if (leftEl) leftEl.classList.toggle('compact', sortedList.length >= 12);
+    if (rightEl) rightEl.classList.toggle('compact', sortedList.length >= 12);
+  }
+
+  renderTeam(sortedHome, homeOnFieldEl, homeBenchEl, 'home');
+  renderTeam(sortedAway, awayOnFieldEl, awayBenchEl, 'away');
+}
+
+// Scoring Functions
+function addPoints(points) {
+  if (!selectedPlayer) {
+    alert('Selecteer eerst een speler');
+    return;
+  }
+  if (!selectedPlayer.onField) {
+    alert('Speler moet op het veld staan om punten toe te kennen');
+    return;
+  }
+  
+  selectedPlayer.points += points;
+  lastScoreText = `${selectedPlayer.name} - ${points}PT`;
+  updateSelectedPlayerDisplay();
+  renderPlayerGrids();
+  pushStateToFirebase();
+  showPopup(selectedPlayer, `${points}PT`);
+}
+
+function addFoul(foulType) {
+  if (!selectedPlayer) {
+    alert('Selecteer eerst een speler');
+    return;
+  }
+  if (!selectedPlayer.onField) {
+    alert('Speler moet op het veld staan om een fout toe te kennen');
+    return;
+  }
+  
+  if (selectedPlayer.fouls < 5 && foulType === 'P') {
+    selectedPlayer.fouls += 1;
+    lastScoreText = `${selectedPlayer.name} - FOUT`;
+  }
+  
+  // Store which team committed foul for shooter selection
+  foulShootingPlayer = null;
+  
+  // Show free throw shooter selection for P1/P2/P3
+  if (foulType === 'P1' || foulType === 'P2' || foulType === 'P3') {
+    showFoulModal(foulType);
+    return;
+  }
+  
+  updateSelectedPlayerDisplay();
+  renderPlayerGrids();
+  pushStateToFirebase();
+  showPopup(selectedPlayer, foulType);
+}
+
+function showFoulModal(foulType) {
+  const otherTeam = selectedTeam === 'home' ? 'away' : 'home';
+  const otherTeamPlayers = otherTeam === 'home' ? homePlayers : awayPlayers;
+  const otherTeamName = otherTeam === 'home' ? homeNameInput.value : awayNameInput.value;
+  
+  const foulTypeText = {
+    'P1': '1 vrijworp',
+    'P2': '2 vrijworpen',
+    'P3': '3 vrijworpen'
+  }[foulType];
+
+  foulModal.innerHTML = `
+    <div class="modal-content">
+      <h3>${foulTypeText} - Kies schutter</h3>
+      <p>${otherTeamName} mag de vrijworp(en) nemen. Kies een speler:</p>
+      <div class="foul-player-list">
+        ${otherTeamPlayers.map((p) => `
+          <div class="foul-player-option" data-player-id="${p.number}">
+            <span class="foul-player-number">${p.number}</span>
+            <span class="foul-player-name">${p.name}</span>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+  
+  foulModal.classList.remove('hidden');
+  
+  // Setup event listeners for player selection
+  foulModal.querySelectorAll('.foul-player-option').forEach(el => {
+    el.addEventListener('click', () => {
+      const playerNum = parseInt(el.dataset.playerId);
+      const shooter = otherTeamPlayers.find(p => p.number === playerNum);
+      if (shooter) {
+        foulShootingPlayer = shooter;
+        completeFoul(foulType);
+      }
+    });
+  });
+}
+
+function completeFoul(foulType) {
+  if (selectedPlayer.fouls < 5) {
+    selectedPlayer.fouls += 1;
+  }
+  
+  const foulTypeMap = {
+    'P1': '1 vrijworp',
+    'P2': '2 vrijworpen',
+    'P3': '3 vrijworpen'
+  };
+  
+  const shooterText = foulShootingPlayer 
+    ? `${foulTypeMap[foulType]} voor nummer ${foulShootingPlayer.number}: ${foulShootingPlayer.name}`
+    : foulTypeMap[foulType];
+  
+  lastScoreText = `${selectedPlayer.name} - FOUT`;
+  
+  foulModal.classList.add('hidden');
+  updateSelectedPlayerDisplay();
+  renderPlayerGrids();
+  pushStateToFirebase();
+  
+  // Show popup with shooter info
+  const popupData = {
+    player: selectedPlayer,
+    type: 'FOUT',
+    foulType: foulType,
+    shooter: foulShootingPlayer,
+    shooterText: shooterText
+  };
+  
+  window.setFirebase(window.ref(window.db, 'popup'), popupData);
+  sendSocketMessage({ type: 'popup', popupData });
+  
+  foulShootingPlayer = null;
+}
+
+// Edit Modal Functions
+function openEditModal(team) {
+  editingTeam = team;
+
+  const players = team === 'home' ? homePlayers : awayPlayers;
+
+  editTeamLabel.textContent =
+    (team === 'home' ? homeNameInput.value : awayNameInput.value) +
+    ' - Spelers bewerken';
+
+  playerEditList.innerHTML = '';
+
+  players.forEach((player, index) => {
+    const box = document.createElement('div');
+    box.className = 'player-box';
+
+    const number = document.createElement('div');
+    number.className = 'player-box-number';
+    number.textContent = player.number;
+
+    const name = document.createElement('div');
+    name.className = 'player-box-name';
+    name.textContent = player.name;
+
+    box.append(number, name);
+
+    // voeg toe aan lijst
+    playerEditList.appendChild(box);
+  });
+  // show the player edit modal (was incorrectly opening addPlayer modal)
+  if (playerEditModal) playerEditModal.classList.remove('hidden');
+}
+
+function closeEditModals() {
+  playerEditModal.classList.add('hidden');
+  addPlayerModal.classList.add('hidden');
+  editingTeam = null;
+}
+
+// Firebase listeners: keep control in sync with remote state without overwriting on load
+function setupFirebaseListeners() {
+  if (!window.db || !window.ref || !window.onValue) {
+    setTimeout(setupFirebaseListeners, 150);
+    return;
+  }
+
+  window.onValue(window.ref(window.db, 'state'), (snapshot) => {
+    const state = snapshot.val();
+    if (!state) return;
+    homePlayers = (state.homePlayers || []).map(p => ({ ...p }));
+    awayPlayers = (state.awayPlayers || []).map(p => ({ ...p }));
+    currentPeriod = state.period || currentPeriod;
+    lastScoreText = state.lastScoreText || lastScoreText;
+    if (homeNameInput) homeNameInput.value = state.homeName || homeNameInput.value;
+    if (awayNameInput) awayNameInput.value = state.awayName || awayNameInput.value;
+    if (homeColorInput) homeColorInput.value = state.homeTeamColor || homeColorInput.value;
+    if (awayColorInput) awayColorInput.value = state.awayTeamColor || awayColorInput.value;
+    renderPlayerGrids();
+    updateSelectedPlayerDisplay();
+    updateControlScoreboard();
+    if (pregameBtn) pregameBtn.style.display = (currentPeriod === '1') ? '' : 'none';
+  });
+
+  // popup - show locally as well (and clear)
+  window.onValue(window.ref(window.db, 'popup'), (snapshot) => {
+    const data = snapshot.val();
+    if (data) {
+      showPopup(data.player, data.type);
+      try { window.setFirebase(window.ref(window.db, 'popup'), null); } catch (e) {}
+    }
+  });
+
+  // handle stop actions from projection/control
+  window.onValue(window.ref(window.db, 'timeoutAction'), (snapshot) => {
+    const action = snapshot.val();
+    if (action && action.type === 'stop') {
+      hideActivePrompt();
+      try { window.setFirebase(window.ref(window.db, 'timeoutAction'), null); } catch (e) {}
+    }
+  });
+
+  window.onValue(window.ref(window.db, 'halftimeAction'), (snapshot) => {
+    const action = snapshot.val();
+    if (action && action.type === 'stop') {
+      hideActivePrompt();
+      try { window.setFirebase(window.ref(window.db, 'halftimeAction'), null); } catch (e) {}
+    }
+  });
+}
+
+// Load saved state from localStorage if present (prevents reset on refresh)
+function loadLocalStateIfExists() {
+  try {
+    const saved = localStorage.getItem(storageKey('bva-match-state'));
+    if (!saved) return false;
+    const s = JSON.parse(saved);
+    homePlayers = (s.homePlayers || initialHomePlayers).map(p => ({ ...p }));
+    awayPlayers = (s.awayPlayers || initialAwayPlayers).map(p => ({ ...p }));
+    if (s.homeName && homeNameInput) homeNameInput.value = s.homeName;
+    if (s.awayName && awayNameInput) awayNameInput.value = s.awayName;
+    if (s.homeTeamColor && homeColorInput) homeColorInput.value = s.homeTeamColor;
+    if (s.awayTeamColor && awayColorInput) awayColorInput.value = s.awayTeamColor;
+    currentPeriod = s.period || currentPeriod;
+    lastScoreText = s.lastScoreText || lastScoreText;
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+// Firebase & State
+    
+
+function showPopup(player, type) {
+  const popupData = { player, type };
+  window.setFirebase(window.ref(window.db, 'popup'), popupData);
+  sendSocketMessage({ type: 'popup', popupData });
 }
 
 function sendSocketMessage(message) {
@@ -332,366 +711,90 @@ function sendSocketMessage(message) {
   }
 }
 
-if (socket) {
-  socket.addEventListener('open', () => {
-    while (socketQueue.length) {
-      socket.send(socketQueue.shift());
-    }
-  });
-
-  socket.addEventListener('error', (event) => {
-    console.warn('WebSocket error', event);
-  });
-
-  socket.addEventListener('close', () => {
-    console.warn('WebSocket closed');
-  });
-}
-
-function togglePlayerOnField(player, team) {
-  const players = team === 'home' ? homePlayers : awayPlayers;
-  
-  if (player.onField) {
-    // Player is already on field, remove them
-    player.onField = false;
-  } else {
-    // Check if already 5 players on field
-    const onFieldCount = players.filter(p => p.onField).length;
-    if (onFieldCount >= 5) {
-      alert('Je hebt al 5 spelers op het veld. Zet eerst een speler eraf.');
-      return;
-    }
-    // Add player to field
-    player.onField = true;
-  }
-  
-  renderRoster();
-  saveState();
-}
-
-function deletePlayer(team) {
-  const players = team === 'home' ? homePlayers : awayPlayers;
-  const playerList = team === 'home' ? homePlayersEl : awayPlayersEl;
-  
-  if (players.length <= 1) {
-    alert('Je moet minstens 1 speler hebben');
-    return;
-  }
-  
-  players.pop();
-  renderRoster();
-  saveState();
-}
-
-function benchAllPlayers() {
-  homePlayers.forEach((player) => { player.onField = false; });
-  awayPlayers.forEach((player) => { player.onField = false; });
-  renderRoster();
-  saveState();
-}
-
-function addPlayer(team) {
-  const players = team === 'home' ? homePlayers : awayPlayers;
-  
-  if (players.length >= 12) {
-    alert('Je kunt maximaal 12 spelers hebben');
-    return;
-  }
-  
-  const newPlayer = {
-    number: Math.max(...players.map(p => p.number), 0) + 1,
-    name: 'Nieuwe speler',
-    points: 0,
-    fouls: 0,
-    team: team,
-    onField: false,
-  };
-  
-  players.push(newPlayer);
-  renderRoster();
-  saveState();
-
-  // Auto-edit the new player
-  setTimeout(() => {
-    startEditPlayer(newPlayer, team);
-  }, 0);
-}
-
-function renderRoster() {
-  homePlayersEl.innerHTML = '';
-  awayPlayersEl.innerHTML = '';
-
-  // Sort players by number ascending within each group
-  const sortedHomePlayers = [...homePlayers].sort((a, b) => a.number - b.number);
-
-  const homeOnField = sortedHomePlayers.filter((player) => player.onField);
-  const homeBench = sortedHomePlayers.filter((player) => !player.onField);
-  homePlayersEl.append(createPlayerSection('Op veld', homeOnField, 'home'));
-  homePlayersEl.append(createPlayerSection('Bank', homeBench, 'home'));
-
-  const addHomeBtn = document.createElement('button');
-  addHomeBtn.className = 'add-btn';
-  addHomeBtn.textContent = '+ Speler toevoegen';
-  addHomeBtn.addEventListener('click', () => addPlayer('home'));
-  homePlayersEl.append(addHomeBtn);
-
-  // Sort players: on-field first, then by number
-  const sortedAwayPlayers = [...awayPlayers].sort((a, b) => a.number - b.number);
-
-  const awayOnField = sortedAwayPlayers.filter((player) => player.onField);
-  const awayBench = sortedAwayPlayers.filter((player) => !player.onField);
-  awayPlayersEl.append(createPlayerSection('Op veld', awayOnField, 'away'));
-  awayPlayersEl.append(createPlayerSection('Bank', awayBench, 'away'));
-
-  const addAwayBtn = document.createElement('button');
-  addAwayBtn.className = 'add-btn';
-  addAwayBtn.textContent = '+ Speler toevoegen';
-  addAwayBtn.addEventListener('click', () => addPlayer('away'));
-  awayPlayersEl.append(addAwayBtn);
-
-  updateControlScoreboard();
-}
-
-function createPlayerSection(title, players, team) {
-  const section = document.createElement('div');
-  section.className = `team-player-section ${title === 'Op veld' ? 'onfield-section' : 'bench-section'}`;
-
-  const heading = document.createElement('div');
-  heading.className = 'team-player-section-title';
-  heading.textContent = title;
-  section.append(heading);
-
-  if (players.length === 0) {
-    const empty = document.createElement('div');
-    empty.className = 'empty-player-section';
-    empty.textContent = title === 'Op veld' ? 'Geen spelers op het veld' : 'Geen spelers op de bank';
-    section.append(empty);
-    return section;
-  }
-
-  players.forEach((player) => {
-    const card = createPlayerCard(player, team);
-    section.append(card);
-  });
-
-  return section;
-}
-
-function saveState() {
-  const state = {
-    homeName: homeNameInput.value,
-    awayName: awayNameInput.value,
-    homeTeamColor: homeColorInput.value,
-    awayTeamColor: awayColorInput.value,
-    period: currentPeriod,
-    homePlayers,
-    awayPlayers,
-    lastScoreText,
-  };
-  localStorage.setItem(storageKey('bva-match-state'), JSON.stringify(state));
-  broadcastSyncMessage({ type: 'state', state });
-  sendSocketMessage({ type: 'state', state });
-  window.dispatchEvent(new CustomEvent('stateChanged', { detail: state }));
-  updateControlScoreboard();
-}
-
 function updateControlScoreboard() {
-  if (controlHomeName) controlHomeName.textContent = homeNameInput.value;
-  if (controlAwayName) controlAwayName.textContent = awayNameInput.value;
-  if (controlHomeScore) {
-    controlHomeScore.textContent = homePlayers.reduce((sum, player) => sum + player.points, 0);
-  }
-  if (controlAwayScore) {
-    controlAwayScore.textContent = awayPlayers.reduce((sum, player) => sum + player.points, 0);
-  }
-}
+  const homeScore = homePlayers.reduce((sum, p) => sum + p.points, 0);
+  const awayScore = awayPlayers.reduce((sum, p) => sum + p.points, 0);
 
-function updatePlayer(player, points, type) {
-  player.points += points;
-  lastScoreText = `${player.name} - ${type}`;
-  localStorage.setItem(storageKey('last-score'), JSON.stringify({ text: lastScoreText, timestamp: Date.now() }));
-  renderRoster();
-  saveState();
-  showPopup(player, type);
-}
+  const homeScoreEl = document.getElementById('controlHomeScore') || document.querySelector('.home-score-card .score-value');
+  const awayScoreEl = document.getElementById('controlAwayScore') || document.querySelector('.away-score-card .score-value');
+  const homeNameEl = document.getElementById('controlHomeName');
+  const awayNameEl = document.getElementById('controlAwayName');
 
-function addFoul(player) {
-  if (player.fouls < 5) {
-    player.fouls += 1;
+  if (homeScoreEl) homeScoreEl.textContent = homeScore;
+  if (awayScoreEl) awayScoreEl.textContent = awayScore;
+  if (homeNameEl) {
+    homeNameEl.textContent = homeNameInput.value;
+    // do not color the team name background anymore (only text update)
+    homeNameEl.style.background = '';
+    homeNameEl.style.color = '';
   }
-  renderRoster();
-  saveState();
-  showPopup(player, 'FOUT');
-}
-
-function showPopup(player, type) {
-  // Store popup data in localStorage for projection page
-  const popupData = { player, type };
-  localStorage.setItem(storageKey('popup-data'), JSON.stringify(popupData));
-  broadcastSyncMessage({ type: 'popup', popupData });
-  sendSocketMessage({ type: 'popup', popupData });
-  // Dispatch event to trigger popup on projection page if it's open
-  window.dispatchEvent(new CustomEvent('showPopup', { detail: popupData }));
+  if (awayNameEl) {
+    awayNameEl.textContent = awayNameInput.value;
+    awayNameEl.style.background = '';
+    awayNameEl.style.color = '';
+  }
 }
 
 function resetMatch() {
-  if (confirm('Weet je zeker dat je de wedstrijd wil resetten? Alle scores en fouten worden verwijderd.')) {
-    homePlayers = initialHomePlayers.map((player) => ({ ...player, points: 0, fouls: 0, onField: false }));
-    awayPlayers = initialAwayPlayers.map((player) => ({ ...player, points: 0, fouls: 0, onField: false }));
-    renderRoster();
-    saveState();
-    updateProjectionLink();
-    updatePregameButtonVisibility();
+  if (confirm('Weet je zeker dat je de wedstrijd wil resetten?')) {
+    homePlayers = initialHomePlayers.map((p) => ({ ...p, points: 0, fouls: 0 }));
+    awayPlayers = initialAwayPlayers.map((p) => ({ ...p, points: 0, fouls: 0 }));
+    selectedPlayer = null;
+    selectedTeam = null;
+    renderPlayerGrids();
+    updateSelectedPlayerDisplay();
+    pushStateToFirebase();
   }
 }
 
+function getProjectionLink() {
+  return `${window.location.origin}${window.location.pathname.replace(/\/[^\/]*$/, '/')}projection.html`;
+}
+
+// Timeout/Halftime Functions
 function showTimeoutModal() {
-  document.getElementById('timeoutModal').classList.remove('hidden');
+  timeoutModal.classList.remove('hidden');
   document.querySelector('input[name="timeout-team"][value="home"]').checked = true;
 }
 
 function hideTimeoutModal() {
-  document.getElementById('timeoutModal').classList.add('hidden');
+  timeoutModal.classList.add('hidden');
 }
 
-function updatePregameButtonVisibility() {
-  pregameBtn.style.display = currentPeriod === '1' ? 'inline-flex' : 'none';
-}
-
-function showPregameModal() {
-  pregameModal.classList.remove('hidden');
-  pregameStatus.textContent = 'Kies een startteam of zet de opening klaar met Klaarzetten.';
-  preparePregameBtn.classList.remove('hidden');
-  startPregameBtn.classList.remove('hidden');
-  nextPlayerBtn.classList.add('hidden');
-  const defaultTeamInput = document.querySelector('input[name="pregame-team"][value="home"]');
-  if (defaultTeamInput) {
-    defaultTeamInput.checked = true;
-  }
-}
-
-function hidePregameModal() {
-  pregameModal.classList.add('hidden');
-}
-
-function sendPregameAction(action) {
-  localStorage.setItem(storageKey('pregame-action'), JSON.stringify(action));
-  broadcastSyncMessage({ type: 'pregame-action', action });
-  sendSocketMessage({ type: 'pregame-action', action });
-  try {
-    if (window.projectionWindow && !window.projectionWindow.closed) {
-      window.projectionWindow.handlePregameAction(action);
-    }
-  } catch (e) {
-    console.log('Projection window not accessible, using localStorage for pregame action');
-  }
-}
-
-function getSortedPlayers(team) {
-  const players = team === 'home' ? homePlayers : awayPlayers;
-  return [...players].sort((a, b) => a.number - b.number);
-}
-
-let pregameSequence = [];
-let pregameIndex = 0;
-let selectedPregameMode = 'main';
-
-function preparePregame() {
-  sendPregameAction({
-    type: 'preparePregame',
-    screenMode: 'black',
-  });
-  pregameStatus.textContent = 'Pre-game klaargezet. START PREGAME start de show met geselecteerde ploeg.';
-}
-
-function startPregameShow() {
-  const startTeamEl = document.querySelector('input[name="pregame-team"]:checked');
-
-  if (!startTeamEl) {
-    alert('Kies een startteam.');
+function startTimeout() {
+  const selectedTeamInput = document.querySelector('input[name="timeout-team"]:checked');
+  if (!selectedTeamInput) {
+    alert('Selecteer een team');
     return;
   }
-
-  const screenMode = 'black';
-  const startTeam = startTeamEl.value;
-  const otherTeam = startTeam === 'home' ? 'away' : 'home';
-  const teamNames = {
-    home: homeNameInput.value,
-    away: awayNameInput.value,
-  };
-
-  const firstTeamPlayers = getSortedPlayers(startTeam);
-  const secondTeamPlayers = getSortedPlayers(otherTeam);
-
-  pregameSequence = [
-    { type: 'teamName', team: startTeam, teamName: teamNames[startTeam] },
-    ...firstTeamPlayers.map((player) => ({ type: 'player', team: startTeam, player })),
-    { type: 'teamName', team: otherTeam, teamName: teamNames[otherTeam] },
-    ...secondTeamPlayers.map((player) => ({ type: 'player', team: otherTeam, player })),
-  ];
-  pregameIndex = 0;
-  selectedPregameMode = screenMode;
-
-  sendPregameAction({
-    type: 'startPregameShow',
-    screenMode,
-  });
-
-  const nextItem = pregameSequence[pregameIndex];
-  if (nextItem) {
-    sendPregameAction({
-      type: 'showTeamName',
-      screenMode,
-      teamName: nextItem.teamName,
-    });
-    pregameStatus.textContent = `Startend team is ${nextItem.teamName}. Klik op Volgende speler om verder te gaan.`;
-    pregameIndex += 1;
-  }
-
-  preparePregameBtn.classList.add('hidden');
-  startPregameBtn.classList.add('hidden');
-  nextPlayerBtn.classList.remove('hidden');
-  nextPlayerBtn.textContent = pregameIndex >= pregameSequence.length ? 'Voltooien' : 'Volgende speler';
+  
+  const team = selectedTeamInput.value;
+  const teamName = team === 'home' ? homeNameInput.value : awayNameInput.value;
+  
+  const timeoutData = { team, teamName, duration: 60, remaining: 60 };
+  window.setFirebase(window.ref(window.db, 'timeoutData'), timeoutData);
+  sendSocketMessage({ type: 'timeout-data', timeoutData });
+  try { localStorage.setItem(storageKey('timeout-data'), JSON.stringify(timeoutData)); } catch (e) {}
+  
+  hideTimeoutModal();
+  showActivePrompt('timeout', teamName);
 }
 
-function nextPregamePlayer() {
-  if (pregameIndex >= pregameSequence.length) {
-    sendPregameAction({ type: 'pregameComplete' });
-    pregameStatus.textContent = 'Pre-game show voltooid.';
-    nextPlayerBtn.classList.add('hidden');
-    pregameBtn.style.display = 'none';
-    return;
-  }
-
-  const nextItem = pregameSequence[pregameIndex];
-  if (nextItem.type === 'teamName') {
-    sendPregameAction({
-      type: 'showTeamName',
-      screenMode: selectedPregameMode,
-      teamName: nextItem.teamName,
-    });
-    pregameStatus.textContent = `Vervolgd met ${nextItem.teamName}. Klik op Volgende speler.`;
-  } else {
-    sendPregameAction({
-      type: 'showPlayer',
-      screenMode: selectedPregameMode,
-      player: nextItem.player,
-      teamName: nextItem.team === 'home' ? homeNameInput.value : awayNameInput.value,
-    });
-    pregameStatus.textContent = `Toon speler ${nextItem.player.number} - ${nextItem.player.name}. Klik op Volgende speler.`;
-  }
-
-  pregameIndex += 1;
-  nextPlayerBtn.textContent = pregameIndex >= pregameSequence.length ? 'Voltooien' : 'Volgende speler';
+function stopTimeout() {
+  window.setFirebase(window.ref(window.db, 'timeoutAction'), { type: 'stop' });
+  sendSocketMessage({ type: 'timeout-action', action: { type: 'stop' } });
+  hideActivePrompt();
 }
 
-let activeEventType = null;
+function stopHalftime() {
+  window.setFirebase(window.ref(window.db, 'halftimeAction'), { type: 'stop' });
+  sendSocketMessage({ type: 'halftime-action', action: { type: 'stop' } });
+  hideActivePrompt();
+}
 
 function showActivePrompt(type, teamName = '') {
   activeEventType = type;
-  activePromptMessage.textContent = type === 'timeout'
-    ? `Time-out gestart voor ${teamName}`
-    : 'Halftime gestart';
+  activePromptMessage.textContent = type === 'timeout' ? `Time-out: ${teamName}` : 'Halftime gestart';
   stopEventBtn.textContent = type === 'timeout' ? 'Stop time-out' : 'Stop halftime';
   activeEventPrompt.classList.remove('hidden');
 }
@@ -701,180 +804,26 @@ function hideActivePrompt() {
   activeEventPrompt.classList.add('hidden');
 }
 
-function stopEvent() {
-  if (activeEventType === 'timeout') {
-    stopTimeout();
-  } else if (activeEventType === 'halftime') {
-    stopHalftime();
-  }
-}
-
-function stopTimeout() {
-  try {
-    if (window.projectionWindow && !window.projectionWindow.closed) {
-      window.projectionWindow.stopTimeout();
-    }
-  } catch (e) {
-    console.log('Projection window not accessible, using localStorage stop action');
-  }
-  localStorage.setItem(storageKey('timeout-action'), JSON.stringify({ type: 'stop' }));
-  broadcastSyncMessage({ type: 'timeout-action', action: { type: 'stop' } });
-  sendSocketMessage({ type: 'timeout-action', action: { type: 'stop' } });
-  hideActivePrompt();
-}
-
-function stopHalftime() {
-  try {
-    if (window.projectionWindow && !window.projectionWindow.closed) {
-      window.projectionWindow.stopHalftime();
-    }
-  } catch (e) {
-    console.log('Projection window not accessible, using localStorage stop action');
-  }
-  localStorage.setItem(storageKey('halftime-action'), JSON.stringify({ type: 'stop' }));
-  broadcastSyncMessage({ type: 'halftime-action', action: { type: 'stop' } });
-  sendSocketMessage({ type: 'halftime-action', action: { type: 'stop' } });
-  hideActivePrompt();
-}
-
-function startTimeout() {
-  const selectedTeam = document.querySelector('input[name="timeout-team"]:checked');
-  
-  if (!selectedTeam) {
-    alert('Kies alstublieft een team.');
-    return;
-  }
-  
-  benchAllPlayers();
-  const team = selectedTeam.value;
-  const teamName = team === 'home' ? homeNameInput.value : awayNameInput.value;
-  
-  const timeoutData = {
-    type: 'timeout',
-    team,
-    teamName,
-    duration: 60,
-    remaining: 60,
-  };
-  
-  localStorage.setItem(storageKey('timeout-data'), JSON.stringify(timeoutData));
-  broadcastSyncMessage({ type: 'timeout-data', timeoutData });
-  sendSocketMessage({ type: 'timeout-data', timeoutData });
-  
-  // Try direct window communication
-  try {
-    if (window.projectionWindow && !window.projectionWindow.closed) {
-      window.projectionWindow.startTimeoutCountdown(timeoutData);
-    }
-  } catch (e) {
-    console.log('Projection window not accessible, using localStorage');
-  }
-  
-  hideTimeoutModal();
-  showActivePrompt('timeout', teamName);
-}
-
-function startHalftime(remainingSeconds = 15 * 60) {
-  benchAllPlayers();
-  const totalSeconds = remainingSeconds;
-  
-  const halftimeData = {
-    type: 'halftime',
-    totalSeconds,
-    remaining: totalSeconds,
-  };
-  
-  localStorage.setItem(storageKey('halftime-data'), JSON.stringify(halftimeData));
-  broadcastSyncMessage({ type: 'halftime-data', halftimeData });
-  sendSocketMessage({ type: 'halftime-data', halftimeData });
-  
-  // Try direct window communication
-  try {
-    if (window.projectionWindow && !window.projectionWindow.closed) {
-      window.projectionWindow.startHalftimeCountdown(halftimeData);
-    }
-  } catch (e) {
-    console.log('Projection window not accessible, using localStorage');
-  }
-}
-
 function showHalftimeModal() {
-  document.getElementById('halftimeModal').classList.remove('hidden');
+  halftimeModal.classList.remove('hidden');
 }
 
 function hideHalftimeModal() {
-  document.getElementById('halftimeModal').classList.add('hidden');
+  halftimeModal.classList.add('hidden');
 }
 
 function startHalftimeFromModal() {
-  currentPeriod = '3';
-  document.querySelectorAll('.period-btn').forEach((b) => b.classList.remove('active'));
-  const periodBtn = document.querySelector('.period-btn[data-period="3"]');
-  if (periodBtn) periodBtn.classList.add('active');
-
-  startHalftime();
-  saveState();
+  const halftimeData = { totalSeconds: 15 * 60, remaining: 15 * 60 };
+  window.setFirebase(window.ref(window.db, 'halftimeData'), halftimeData);
+  sendSocketMessage({ type: 'halftime-data', halftimeData });
+  try { localStorage.setItem(storageKey('halftime-data'), JSON.stringify(halftimeData)); } catch (e) {}
   hideHalftimeModal();
   showActivePrompt('halftime');
 }
 
-function wireEvents() {
-  homeNameInput.addEventListener('input', saveState);
-  awayNameInput.addEventListener('input', saveState);
-  homeColorInput.addEventListener('change', () => {
-    renderRoster();
-    saveState();
-  });
-  awayColorInput.addEventListener('change', () => {
-    renderRoster();
-    saveState();
-  });
-  
-  // Periode knoppen
-  document.querySelectorAll('.period-btn').forEach((btn) => {
-    btn.addEventListener('click', (e) => {
-      const selectedPeriod = e.target.dataset.period;
-      
-      if (selectedPeriod === '3') {
-        showHalftimeModal();
-        return;
-      }
-      
-      benchAllPlayers();
-      document.querySelectorAll('.period-btn').forEach((b) => b.classList.remove('active'));
-      e.target.classList.add('active');
-      currentPeriod = selectedPeriod;
-      saveState();
-      updatePregameButtonVisibility();
-    });
-  });
-  
-  // Timeout knoppen
-  document.getElementById('timeoutBtn').addEventListener('click', showTimeoutModal);
-  document.getElementById('cancelTimeoutBtn').addEventListener('click', hideTimeoutModal);
-  document.getElementById('startTimeoutBtn').addEventListener('click', startTimeout);
-  
-  // Pregame knoppen
-  pregameBtn.addEventListener('click', showPregameModal);
-  preparePregameBtn.addEventListener('click', preparePregame);
-  startPregameBtn.addEventListener('click', startPregameShow);
-  nextPlayerBtn.addEventListener('click', nextPregamePlayer);
-  cancelPregameBtn.addEventListener('click', hidePregameModal);
-  
-  stopEventBtn.addEventListener('click', stopEvent);
-  document.getElementById('startHalftimeBtn').addEventListener('click', startHalftimeFromModal);
-  document.getElementById('cancelHalftimeBtn').addEventListener('click', hideHalftimeModal);
-  
-  // Update team labels when team names change
-  homeNameInput.addEventListener('input', () => {
-    document.getElementById('homeTeamLabel').textContent = homeNameInput.value;
-    document.getElementById('pregameHomeLabel').textContent = homeNameInput.value;
-  });
-  awayNameInput.addEventListener('input', () => {
-    document.getElementById('awayTeamLabel').textContent = awayNameInput.value;
-    document.getElementById('pregameAwayLabel').textContent = awayNameInput.value;
-  });
-
+// Event Listeners
+function setupEventListeners() {
+  // Access code
   if (accessCodeSubmit) {
     accessCodeSubmit.addEventListener('click', checkAccessCode);
   }
@@ -887,76 +836,171 @@ function wireEvents() {
       }
     });
     accessCodeInput.addEventListener('input', () => {
-      accessError.classList.add('hidden');
+      if (accessError) accessError.classList.add('hidden');
     });
   }
 
-  if (infoLink) {
-    infoLink.addEventListener('click', showInfoPopup);
-  }
-
-  if (openProjectionBtn) {
-    openProjectionBtn.addEventListener('click', (e) => {
-      e.preventDefault();
-      openProjectionWindow();
+  // Scoring buttons
+  document.querySelectorAll('.points-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const points = parseInt(btn.dataset.points);
+      addPoints(points);
     });
-  }
+  });
 
-  if (closeInfoModal) {
-    closeInfoModal.addEventListener('click', hideInfoPopup);
-  }
+  document.querySelectorAll('.foul-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const foulType = btn.dataset.foul;
+      addFoul(foulType);
+    });
+  });
+
+  // Team edit buttons
+  document.getElementById('homeEditBtn').addEventListener('click', () => openEditModal('home'));
+  document.getElementById('awayEditBtn').addEventListener('click', () => openEditModal('away'));
+
+  // Edit modal buttons
+  closeEditBtn.addEventListener('click', closeEditModals);
+  document.getElementById('closeEditModal').addEventListener('click', closeEditModals);
   
-  resetBtn.addEventListener('click', resetMatch);
+  addPlayerBtn.addEventListener('click', () => {
+    const players = editingTeam === 'home' ? homePlayers : awayPlayers;
+    const nextNum = (players && players.length) ? (Math.max(...players.map(p => p.number)) + 1) : 1;
+    newPlayerNumber.value = nextNum;
+    newPlayerName.value = '';
+    savePlayerBtn.onclick = () => {
+      savePlayerBtn.disabled = true;
+      const newNum = parseInt(newPlayerNumber.value);
+      const newName = newPlayerName.value.trim();
+
+      if (!newNum || !newName) {
+        alert('Vul nummer en naam in');
+        savePlayerBtn.disabled = false;
+        return;
+      }
+
+      const players = editingTeam === 'home' ? homePlayers : awayPlayers;
+      if (players.length >= 12) {
+        alert('Maximaal 12 spelers per ploeg toegestaan');
+        savePlayerBtn.disabled = false;
+        return;
+      }
+
+      // Prevent duplicate number or name
+      const dup = players.find(p => p.number === newNum || p.name.toLowerCase() === newName.toLowerCase());
+      if (dup) {
+        alert('Er bestaat al een speler met hetzelfde nummer of naam');
+        savePlayerBtn.disabled = false;
+        return;
+      }
+
+      players.push({ number: newNum, name: newName, points: 0, fouls: 0, team: editingTeam, onField: false });
+
+      renderPlayerGrids();
+      pushStateToFirebase();
+      openEditModal(editingTeam);
+      addPlayerModal.classList.add('hidden');
+      savePlayerBtn.disabled = false;
+    };
+    addPlayerModal.classList.remove('hidden');
+  });
+
+  cancelAddPlayerBtn.addEventListener('click', () => {
+    addPlayerModal.classList.add('hidden');
+  });
+
+  // Team name and color changes
+  homeNameInput.addEventListener('input', pushStateToFirebase);
+  awayNameInput.addEventListener('input', pushStateToFirebase);
+  homeColorInput.addEventListener('change', () => {
+    renderPlayerGrids();
+    pushStateToFirebase();
+  });
+  awayColorInput.addEventListener('change', () => {
+    renderPlayerGrids();
+    pushStateToFirebase();
+  });
+
+  // Period buttons
+  document.querySelectorAll('.period-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const period = e.target.dataset.period;
+      // Always set the current period and update UI/state
+      currentPeriod = period;
+      document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+      e.target.classList.add('active');
+      pushStateToFirebase();
+      if (pregameBtn) pregameBtn.style.display = (currentPeriod === '1') ? '' : 'none';
+      // If halftime period selected, open halftime modal (period already set)
+      if (period === '3') {
+        showHalftimeModal();
+        return;
+      }
+    });
+  });
+
+  // Timeout
+  if (timeoutBtn) timeoutBtn.addEventListener('click', showTimeoutModal);
+  document.getElementById('cancelTimeoutBtn').addEventListener('click', hideTimeoutModal);
+  document.getElementById('startTimeoutBtn').addEventListener('click', startTimeout);
+
+  // Halftime
+  document.getElementById('cancelHalftimeBtn').addEventListener('click', hideHalftimeModal);
+  document.getElementById('startHalftimeBtn').addEventListener('click', startHalftimeFromModal);
+
+  // Stop event
+  if (stopEventBtn) stopEventBtn.addEventListener('click', () => {
+    if (activeEventType === 'timeout') stopTimeout();
+    else if (activeEventType === 'halftime') stopHalftime();
+  });
+
+  // Reset and Open Projection
+  if (resetBtn) resetBtn.addEventListener('click', resetMatch);
+  if (openProjectionBtn) openProjectionBtn.addEventListener('click', () => {
+    window.open(getProjectionLink(), 'projection');
+  });
+  if (pregameBtn) pregameBtn.addEventListener('click', openPregameModal);
+  const prepareBtn = document.getElementById('preparePregameBtn');
+  const startBtn = document.getElementById('startPregameBtn');
+  const nextBtn = document.getElementById('nextPlayerBtn');
+  const cancelPregameBtn = document.getElementById('cancelPregameBtn');
+  if (prepareBtn) prepareBtn.onclick = preparePregame;
+  if (startBtn) startBtn.onclick = startPregameSequence;
+  if (nextBtn) nextBtn.onclick = nextPregamePlayer;
+  if (cancelPregameBtn) cancelPregameBtn.onclick = closePregameModal;
+
+  // Info modal
+  if (infoLink) infoLink.addEventListener('click', () => infoModal.classList.remove('hidden'));
+  if (closeInfoModal) closeInfoModal.addEventListener('click', () => infoModal.classList.add('hidden'));
 }
 
-async function init() {
-  // Check if there's a saved state in localStorage
-  const savedState = localStorage.getItem(storageKey('bva-match-state'));
-  if (savedState) {
-    const state = JSON.parse(savedState);
-    homePlayers = state.homePlayers;
-    awayPlayers = state.awayPlayers;
-    // Ensure all players have onField property (for backwards compatibility)
-    homePlayers.forEach(p => { if (p.onField === undefined) p.onField = false; });
-    awayPlayers.forEach(p => { if (p.onField === undefined) p.onField = false; });
-    homeNameInput.value = state.homeName;
-    awayNameInput.value = state.awayName;
-    homeColorInput.value = state.homeTeamColor || '#b22222';
-    awayColorInput.value = state.awayTeamColor || '#dc143c';
-    currentPeriod = state.period || '1';
-  } else {
-    // First time - initialize with default data
-    homePlayers = initialHomePlayers.map((player) => ({ ...player }));
-    awayPlayers = initialAwayPlayers.map((player) => ({ ...player }));
-    homeColorInput.value = '#b22222';
-    awayColorInput.value = '#dc143c';
-    currentPeriod = '1';
+// Initialize
+function init() {
+  const loaded = loadLocalStateIfExists();
+  if (!loaded) {
+    homePlayers = initialHomePlayers.map((p) => ({ ...p }));
+    awayPlayers = initialAwayPlayers.map((p) => ({ ...p }));
   }
   
-  // Set active period button
-  document.querySelectorAll('.period-btn').forEach((btn) => {
+  document.querySelectorAll('.period-btn').forEach(btn => {
     btn.classList.remove('active');
     if (btn.dataset.period === currentPeriod) {
       btn.classList.add('active');
     }
   });
-  
-  // Initialize team labels in modals
-  document.getElementById('homeTeamLabel').textContent = homeNameInput.value;
-  document.getElementById('awayTeamLabel').textContent = awayNameInput.value;
-  document.getElementById('pregameHomeLabel').textContent = homeNameInput.value;
-  document.getElementById('pregameAwayLabel').textContent = awayNameInput.value;
-  updatePregameButtonVisibility();
-  updateControlScoreboard();
-  
-  wireEvents();
-  renderRoster();
-  saveState();
-  updateProjectionLink();
 
-  if (accessCodeInput) {
-    accessCodeInput.focus();
-  }
+  setupEventListeners();
+  // Attach Firebase listeners (will populate control if remote state exists)
+  setupFirebaseListeners();
+  renderPlayerGrids();
+  updateSelectedPlayerDisplay();
+  if (pregameBtn) pregameBtn.style.display = (currentPeriod === '1') ? '' : 'none';
 }
 
-init();
+// Start initialization
+if (window.db && window.ref && window.setFirebase) {
+  init();
+} else {
+  console.warn('Firebase not initialized yet, waiting...');
+  setTimeout(init, 100);
+}
