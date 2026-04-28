@@ -97,6 +97,7 @@ const pregameModal = document.getElementById('pregameModal');
 const infoLink = document.getElementById('infoLink');
 const infoModal = document.getElementById('infoModal');
 const closeInfoModal = document.getElementById('closeInfoModal');
+const startVideoBtn = document.getElementById('startVideoBtn');
 
 // State
 let lastScoreText = 'Geen recente score';
@@ -107,6 +108,7 @@ let socketQueue = [];
 let pregameTeamOrder = [];
 let pregameCurrentTeamIndex = 0;
 let pregamePlayerIndex = -1; // -1 means show team name next
+let pregameVideoPlayed = false;
 
 function sendPregameAction(action) {
   window.setFirebase(window.ref(window.db, 'pregameAction'), action);
@@ -117,6 +119,18 @@ function openPregameModal() {
   if (!pregameModal) return;
   document.getElementById('pregameHomeLabel').textContent = homeNameInput.value;
   document.getElementById('pregameAwayLabel').textContent = awayNameInput.value;
+  // require video start before allowing 'Start pregame'
+  const startBtn = document.getElementById('startPregameBtn');
+  if (startBtn) startBtn.disabled = true;
+  if (startVideoBtn) {
+    if (pregameVideoPlayed) {
+      startVideoBtn.style.display = 'none';
+      startVideoBtn.disabled = true;
+    } else {
+      startVideoBtn.style.display = '';
+      startVideoBtn.disabled = false;
+    }
+  }
   pregameModal.classList.remove('hidden');
 }
 
@@ -126,7 +140,8 @@ function closePregameModal() {
 }
 
 function preparePregame() {
-  sendPregameAction({ type: 'preparePregame', screenMode: 'main' });
+  // prepare on projection: use black screen style for the title
+  sendPregameAction({ type: 'preparePregame', screenMode: 'black' });
 }
 
 function startPregameSequence() {
@@ -508,34 +523,41 @@ function showFoulModal(foulType) {
   const otherTeam = selectedTeam === 'home' ? 'away' : 'home';
   const otherTeamPlayers = otherTeam === 'home' ? homePlayers : awayPlayers;
   const otherTeamName = otherTeam === 'home' ? homeNameInput.value : awayNameInput.value;
-  
+
   const foulTypeText = {
     'P1': '1 vrijworp',
     'P2': '2 vrijworpen',
     'P3': '3 vrijworpen'
   }[foulType];
 
+  // Only show on-field players of the other team, sorted by number ascending
+  const onFieldPlayers = otherTeamPlayers.filter(p => p.onField).slice().sort((a, b) => a.number - b.number);
+  const hasOnField = onFieldPlayers.length > 0;
+
   foulModal.innerHTML = `
     <div class="modal-content">
       <h3>${foulTypeText} - Kies schutter</h3>
-      <p>${otherTeamName} mag de vrijworp(en) nemen. Kies een speler:</p>
+      <p>${otherTeamName} mag de vrijworp(en) nemen. ${hasOnField ? 'Kies een speler:' : 'Er staan momenteel geen spelers op het veld.'}</p>
       <div class="foul-player-list">
-        ${otherTeamPlayers.map((p) => `
-          <div class="foul-player-option" data-player-id="${p.number}">
-            <span class="foul-player-number">${p.number}</span>
-            <span class="foul-player-name">${p.name}</span>
-          </div>
-        `).join('')}
+        ${hasOnField ? onFieldPlayers.map((p) => `
+          <button type="button" class="foul-player-option" data-player-id="${p.number}">
+            <div class="foul-player-number">${p.number}</div>
+            <div class="foul-player-name">${p.name}</div>
+          </button>
+        `).join('') : ''}
+      </div>
+      <div class="modal-actions">
+        <button id="foulCancelBtn" class="action-button">Weigeren</button>
       </div>
     </div>
   `;
-  
+
   foulModal.classList.remove('hidden');
-  
+
   // Setup event listeners for player selection
   foulModal.querySelectorAll('.foul-player-option').forEach(el => {
     el.addEventListener('click', () => {
-      const playerNum = parseInt(el.dataset.playerId);
+      const playerNum = parseInt(el.dataset.playerId, 10);
       const shooter = otherTeamPlayers.find(p => p.number === playerNum);
       if (shooter) {
         foulShootingPlayer = shooter;
@@ -543,6 +565,14 @@ function showFoulModal(foulType) {
       }
     });
   });
+
+  const cancelBtn = foulModal.querySelector('#foulCancelBtn');
+  if (cancelBtn) {
+    cancelBtn.addEventListener('click', () => {
+      foulShootingPlayer = null;
+      foulModal.classList.add('hidden');
+    });
+  }
 }
 
 function completeFoul(foulType) {
@@ -606,13 +636,109 @@ function openEditModal(team) {
     name.className = 'player-box-name';
     name.textContent = player.name;
 
-    box.append(number, name);
+    const editBtn = document.createElement('button');
+    editBtn.type = 'button';
+    editBtn.className = 'edit-icon-btn';
+    editBtn.title = 'Speler bewerken';
+    editBtn.textContent = '✎';
+    editBtn.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      openInlineEditor(box, index, team);
+    });
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    deleteBtn.className = 'delete-icon-btn';
+    deleteBtn.title = 'Speler verwijderen';
+    deleteBtn.textContent = '🗑';
+    deleteBtn.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (!confirm('Weet je zeker dat je deze speler wil verwijderen?')) return;
+      players.splice(index, 1);
+      renderPlayerGrids();
+      pushStateToFirebase();
+      openEditModal(team);
+    });
+
+    box.append(number, name, editBtn, deleteBtn);
 
     // voeg toe aan lijst
     playerEditList.appendChild(box);
-  });
-  // show the player edit modal (was incorrectly opening addPlayer modal)
+    });
+
+  // Hide the add-player button when team has 12 players
+  if (addPlayerBtn) addPlayerBtn.style.display = players.length >= 12 ? 'none' : '';
+  // show the player edit modal
   if (playerEditModal) playerEditModal.classList.remove('hidden');
+}
+
+// Inline editor inside the player edit modal
+function openInlineEditor(containerEl, playerIndex, team) {
+  const players = team === 'home' ? homePlayers : awayPlayers;
+  const player = players[playerIndex];
+  if (!player) return;
+
+  containerEl.innerHTML = '';
+  const editRow = document.createElement('div');
+  editRow.className = 'player-edit-row';
+
+  const numberInput = document.createElement('input');
+  numberInput.type = 'number';
+  numberInput.min = '1';
+  numberInput.max = '99';
+  numberInput.value = player.number;
+  numberInput.id = `edit-number-${playerIndex}`;
+  numberInput.className = 'edit-number';
+
+  const nameInput = document.createElement('input');
+  nameInput.type = 'text';
+  nameInput.value = player.name;
+  nameInput.id = `edit-name-${playerIndex}`;
+  nameInput.className = 'edit-name';
+
+  const actions = document.createElement('div');
+  actions.className = 'player-edit-actions';
+
+  const saveBtn = document.createElement('button');
+  saveBtn.type = 'button';
+  saveBtn.className = 'action-button save-edit-btn';
+  saveBtn.textContent = 'Opslaan';
+  saveBtn.addEventListener('click', () => {
+    const newNum = parseInt(numberInput.value, 10);
+    const newName = nameInput.value.trim();
+    if (!newNum || !newName) {
+      alert('Voer alstublieft een nummer en naam in');
+      return;
+    }
+    // prevent duplicate numbers in same team
+    const dup = players.find((p, idx) => idx !== playerIndex && (p.number === newNum || p.name.toLowerCase() === newName.toLowerCase()));
+    if (dup) {
+      alert('Er bestaat al een speler met hetzelfde nummer of naam in deze ploeg');
+      return;
+    }
+    player.number = newNum;
+    player.name = newName;
+    renderPlayerGrids();
+    pushStateToFirebase();
+    // re-open modal list to reflect changes
+    openEditModal(team);
+  });
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.className = 'action-button cancel-edit-btn';
+  cancelBtn.textContent = 'Annuleer';
+  cancelBtn.addEventListener('click', () => {
+    openEditModal(team);
+  });
+
+  actions.append(saveBtn, cancelBtn);
+  editRow.append(numberInput, nameInput, actions);
+  containerEl.appendChild(editRow);
+  // focus name input
+  setTimeout(() => nameInput.focus(), 50);
 }
 
 function closeEditModals() {
@@ -670,6 +796,48 @@ function setupFirebaseListeners() {
       try { window.setFirebase(window.ref(window.db, 'halftimeAction'), null); } catch (e) {}
     }
   });
+
+  // Listen for pregame actions from projection (e.g., video done or team name prompts)
+  try {
+    window.onValue(window.ref(window.db, 'pregameAction'), (snapshot) => {
+      const action = snapshot.val();
+      if (!action || !action.type) return;
+      // projection signals video finished -> enable 'Start pregame'
+      if (action.type === 'videoDone' || action.type === 'videoComplete') {
+        const startBtn = document.getElementById('startPregameBtn');
+        if (startBtn) startBtn.disabled = false;
+        pregameVideoPlayed = true;
+        if (startVideoBtn) {
+          startVideoBtn.disabled = true;
+          startVideoBtn.style.display = 'none';
+        }
+      }
+      // projection asks to show a team name in the pregame prompt
+      if (action.type === 'showTeamName' && action.teamName) {
+        const liveEl = document.getElementById('pregameLiveText');
+        if (liveEl) liveEl.textContent = `Toon: ${action.teamName}`;
+      }
+      // projection or control signalled that pregame finished - ensure next button hidden
+      if (action.type === 'pregameComplete') {
+        const nextBtn = document.getElementById('nextPlayerBtn');
+        if (nextBtn) nextBtn.classList.add('hidden');
+        const startBtn2 = document.getElementById('startPregameBtn');
+        if (startBtn2) {
+          startBtn2.textContent = 'START PREGAME';
+          startBtn2.onclick = startPregameSequence;
+          startBtn2.disabled = false;
+        }
+        const finishBtn = document.getElementById('finishPregameBtn');
+        if (finishBtn) finishBtn.classList.add('hidden');
+        if (startVideoBtn) {
+          startVideoBtn.style.display = 'none';
+          startVideoBtn.disabled = true;
+        }
+      }
+    });
+  } catch (e) {
+    // ignore if firebase not ready
+  }
 }
 
 // Load saved state from localStorage if present (prevents reset on refresh)
@@ -753,8 +921,14 @@ function getProjectionLink() {
 
 // Timeout/Halftime Functions
 function showTimeoutModal() {
-  timeoutModal.classList.remove('hidden');
+  // Update radio labels to current team names
+  const homeLabel = document.getElementById('homeTeamLabel');
+  const awayLabel = document.getElementById('awayTeamLabel');
+  if (homeLabel) homeLabel.textContent = homeNameInput.value || 'Thuis';
+  if (awayLabel) awayLabel.textContent = awayNameInput.value || 'Uit';
+
   document.querySelector('input[name="timeout-team"][value="home"]').checked = true;
+  timeoutModal.classList.remove('hidden');
 }
 
 function hideTimeoutModal() {
@@ -771,6 +945,9 @@ function startTimeout() {
   const team = selectedTeamInput.value;
   const teamName = team === 'home' ? homeNameInput.value : awayNameInput.value;
   
+  // Move all players to the bench immediately when timeout starts
+  benchAllPlayers();
+
   const timeoutData = { team, teamName, duration: 60, remaining: 60 };
   window.setFirebase(window.ref(window.db, 'timeoutData'), timeoutData);
   sendSocketMessage({ type: 'timeout-data', timeoutData });
@@ -810,6 +987,18 @@ function showHalftimeModal() {
 
 function hideHalftimeModal() {
   halftimeModal.classList.add('hidden');
+}
+
+// Move all players to the bench and clear selection
+function benchAllPlayers() {
+  homePlayers.forEach(p => { p.onField = false; });
+  awayPlayers.forEach(p => { p.onField = false; });
+  // Clear selection to avoid awarding points to bench players
+  selectedPlayer = null;
+  selectedTeam = null;
+  updateSelectedPlayerDisplay();
+  renderPlayerGrids();
+  pushStateToFirebase();
 }
 
 function startHalftimeFromModal() {
@@ -932,6 +1121,9 @@ function setupEventListeners() {
       pushStateToFirebase();
       if (pregameBtn) pregameBtn.style.display = (currentPeriod === '1') ? '' : 'none';
       // If halftime period selected, open halftime modal (period already set)
+      // When period changes, send all players to the bench so the projection shows an empty field
+      benchAllPlayers();
+      // If halftime period selected, open halftime modal (period already set)
       if (period === '3') {
         showHalftimeModal();
         return;
@@ -966,6 +1158,12 @@ function setupEventListeners() {
   const cancelPregameBtn = document.getElementById('cancelPregameBtn');
   if (prepareBtn) prepareBtn.onclick = preparePregame;
   if (startBtn) startBtn.onclick = startPregameSequence;
+  if (startVideoBtn) startVideoBtn.addEventListener('click', () => {
+    // send action to projection to start the PREGAME video
+    sendPregameAction({ type: 'startVideo' });
+    // disable the video button to prevent double clicks
+    startVideoBtn.disabled = true;
+  });
   if (nextBtn) nextBtn.onclick = nextPregamePlayer;
   if (cancelPregameBtn) cancelPregameBtn.onclick = closePregameModal;
 
