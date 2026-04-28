@@ -1766,9 +1766,10 @@ html, body {
 .fouls-row {
   display: flex;
   flex-direction: row;
-  gap: 8px;
+  gap: 10px;
   justify-content: center;
   align-items: center;
+  flex-wrap: nowrap;
 }
 
 .fouls-section h3,
@@ -1781,16 +1782,17 @@ html, body {
 }
 .foul-btn,
 .points-btn {
-  padding: 8px 12px;
+  padding: 10px 14px;
   border: none;
-  background: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.18);
   color: white;
-  border-radius: 8px;
-  font-weight: 700;
-  font-size: 0.95rem;
+  border-radius: 10px;
+  font-weight: 800;
+  font-size: 1.05rem;
   cursor: pointer;
   transition: all 0.12s;
-  min-width: 56px;
+  min-width: 60px;
+  min-height: 44px;
   text-align: center;
 }
 .foul-btn:hover,
