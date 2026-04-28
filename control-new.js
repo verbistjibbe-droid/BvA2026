@@ -627,8 +627,14 @@ function completeFoul(foulType) {
     shooter: foulShootingPlayer,
     shooterText: shooterText
   };
-  
-  window.setFirebase(window.ref(window.db, 'popup'), popupData);
+  try {
+    console.log('[control] write popup -> Firebase', popupData);
+  } catch (e) {}
+  try {
+    window.setFirebase(window.ref(window.db, 'popup'), popupData);
+  } catch (e) {
+    console.warn('Failed to write popup to Firebase', e);
+  }
   sendSocketMessage({ type: 'popup', popupData });
   
   foulShootingPlayer = null;
@@ -887,7 +893,14 @@ function loadLocalStateIfExists() {
 
 function showPopup(player, type) {
   const popupData = { player, type };
-  window.setFirebase(window.ref(window.db, 'popup'), popupData);
+  try {
+    console.log('[control] write popup -> Firebase', popupData);
+  } catch (e) {}
+  try {
+    window.setFirebase(window.ref(window.db, 'popup'), popupData);
+  } catch (e) {
+    console.warn('Failed to write popup to Firebase', e);
+  }
   sendSocketMessage({ type: 'popup', popupData });
 }
 
