@@ -59,24 +59,30 @@ let currentCountdownType = null;
 let pregameScreenMode = 'main';
 
 function splitPlayerName(name) {
-  const trimmed = name.trim();
-  const parts = trimmed.split(" ");
+  const trimmed = (name || '').trim();
+  if (!trimmed) return [''];
+  // if name is short, keep on one line
+  if (trimmed.length <= 25) return [trimmed];
 
-  if (parts.length >= 2) {
-    return [parts[0], parts.slice(1).join(" ")];
-  }
+  // try to split on a space close to the middle
+  const mid = Math.floor(trimmed.length / 2);
+  const leftSpace = trimmed.lastIndexOf(' ', mid);
+  const rightSpace = trimmed.indexOf(' ', mid + 1);
+  let splitIndex = -1;
+  if (leftSpace > -1) splitIndex = leftSpace;
+  else if (rightSpace > -1) splitIndex = rightSpace;
+  else splitIndex = 25; // fallback hard split
 
-  return [trimmed];
+  const first = trimmed.slice(0, splitIndex).trim();
+  const second = trimmed.slice(splitIndex + 1).trim();
+  return [first, second];
 }
 
 function createProjectionItem(player, teamColor) {
   const item = document.createElement('div');
   item.className = 'projection-player';
-  
-  // Apply team color to the projection item
-  if (teamColor) {
-    item.style.borderColor = teamColor;
-  }
+  // Apply team color to the projection item border
+  if (teamColor) item.style.borderColor = teamColor;
 
   const number = document.createElement('div');
   number.className = 'proj-number';
@@ -84,36 +90,48 @@ function createProjectionItem(player, teamColor) {
 
   const details = document.createElement('div');
   details.className = 'proj-details';
-  
-  const nameContainer = document.createElement('div');
-  nameContainer.className = 'proj-name-container';
-  
+
+  // Name area: single line unless very long (>25 chars)
   const name = document.createElement('div');
   name.className = 'proj-name';
   const nameLines = splitPlayerName(player.name);
-  nameLines.forEach((line, index) => {
-    const lineEl = document.createElement('span');
-    lineEl.className = index === 0 ? 'proj-name-first-line' : 'proj-name-second-line';
-    lineEl.textContent = line;
-    name.append(lineEl);
-  });
-  if (nameLines.length > 1) {
+  if (nameLines.length === 1) {
+    name.textContent = nameLines[0];
+  } else {
+    const first = document.createElement('span');
+    first.className = 'proj-name-first-line';
+    first.textContent = nameLines[0];
+    const second = document.createElement('span');
+    second.className = 'proj-name-second-line';
+    second.textContent = nameLines[1];
+    name.append(first, second);
     name.classList.add('multi-line');
   }
-  
-  // Add blinking dot if player is on field
-  if (player.onField) {
-    const onFieldDot = document.createElement('div');
-    onFieldDot.className = 'on-field-dot';
-    nameContainer.append(name, onFieldDot);
-  } else {
-    nameContainer.append(name);
+
+  details.appendChild(name);
+
+  // Right container: points + separator (space or blinking dot) + fouls
+  const right = document.createElement('div');
+  right.className = 'proj-right';
+
+  // Points: show only when > 0 and append 'pts'
+  if (player.points && player.points > 0) {
+    const points = document.createElement('div');
+    points.className = 'proj-points';
+    points.textContent = `${player.points}pts`;
+    right.appendChild(points);
   }
-  
-  const score = document.createElement('div');
-  score.className = 'proj-score';
-  score.textContent = `${player.points} pts`;
-  details.append(nameContainer, score);
+
+  // Separator between points and fouls: blinking green dot when player on field, otherwise a small spacer
+  if (player.onField) {
+    const sepDot = document.createElement('div');
+    sepDot.className = 'on-field-dot';
+    right.appendChild(sepDot);
+  } else {
+    const spacer = document.createElement('div');
+    spacer.className = 'proj-sep';
+    right.appendChild(spacer);
+  }
 
   const fouls = document.createElement('div');
   fouls.className = 'foul-dots';
@@ -125,7 +143,9 @@ function createProjectionItem(player, teamColor) {
     fouls.append(dot);
   }
 
-  item.append(number, details, fouls);
+  right.appendChild(fouls);
+
+  item.append(number, details, right);
   return item;
 }
 
@@ -151,12 +171,25 @@ function renderProjection() {
   homeProjectionPlayersEl.innerHTML = '';
   awayProjectionPlayersEl.innerHTML = '';
 
-  currentState.homePlayers.forEach((player) => {
+  // Render players sorted by number (ascending: smallest number at top)
+  const sortedHome = (currentState.homePlayers || []).slice().sort((a, b) => {
+    const na = parseInt(a && a.number, 10) || 0;
+    const nb = parseInt(b && b.number, 10) || 0;
+    return na - nb;
+  });
+
+  const sortedAway = (currentState.awayPlayers || []).slice().sort((a, b) => {
+    const na = parseInt(a && a.number, 10) || 0;
+    const nb = parseInt(b && b.number, 10) || 0;
+    return na - nb;
+  });
+
+  sortedHome.forEach((player) => {
     const item = createProjectionItem(player, currentState.homeTeamColor);
     homeProjectionPlayersEl.append(item);
   });
 
-  currentState.awayPlayers.forEach((player) => {
+  sortedAway.forEach((player) => {
     const item = createProjectionItem(player, currentState.awayTeamColor);
     awayProjectionPlayersEl.append(item);
   });
@@ -306,7 +339,7 @@ function updateLastScoreDisplay() {
   const lastScoreElement = document.getElementById('timeoutLastScoreDisplay');
   if (lastScoreElement) {
     const scoreText = currentState.lastScoreText || getStoredLastScore();
-    lastScoreElement.textContent = `Laatste score: ${scoreText}`;
+    lastScoreElement.textContent = `Laatste actie: ${scoreText}`;
   }
 }
 
@@ -348,6 +381,31 @@ function animatePregameContent() {
   pregameContent.classList.add('pregame-appear');
 }
 
+// Ensure a text element fits on a single line by reducing font-size until it fits (with a sensible min)
+function fitTextToOneLine(el, minFontPx = 14) {
+  if (!el) return;
+  // enforce single-line behavior
+  el.style.whiteSpace = 'nowrap';
+  el.style.overflow = 'hidden';
+  el.style.textOverflow = 'ellipsis';
+
+  // Reset any previously set inline font-size to get the computed default
+  el.style.fontSize = '';
+  let computed = window.getComputedStyle(el).fontSize;
+  let fontSize = parseFloat(computed) || 20;
+
+  // quick bail if already fits
+  if (el.scrollWidth <= el.clientWidth) return;
+
+  // iterate down to minFontPx (avoid infinite loops)
+  let iter = 0;
+  while (el.scrollWidth > el.clientWidth && fontSize > minFontPx && iter < 60) {
+    fontSize -= 1;
+    el.style.fontSize = `${fontSize}px`;
+    iter += 1;
+  }
+}
+
 function updatePregameScreen(item) {
   if (item.type === 'teamName') {
     pregameTeamLabel.textContent = item.teamName;
@@ -357,8 +415,13 @@ function updatePregameScreen(item) {
     pregameTeamLabel.textContent = item.teamName || '';
     showPregameElement(pregameTeamLabel);
     pregamePlayerNumber.textContent = item.player.number;
+    // set text then show row, then ensure name fits on one line
     pregamePlayerName.textContent = item.player.name;
     showPregameElement(pregamePlayerRow);
+    // allow layout to settle then fit the name to one line
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      fitTextToOneLine(pregamePlayerName, 14);
+    }));
   }
   animatePregameContent();
 }
@@ -376,23 +439,88 @@ function handlePregameAction(action) {
   if (!action || !action.type) return;
 
   if (action.type === 'preparePregame') {
+    // ensure pregame content is visible for the prepare screen
+    if (pregameContent) pregameContent.classList.remove('hidden');
+    if (pregameModeLabel) pregameModeLabel.classList.remove('hidden');
     showPregameOverlay(action.screenMode);
     pregameTeamLabel.classList.add('hidden');
     pregamePlayerRow.classList.add('hidden');
   }
 
+  // Start a pregame video (PREGAMEBVA). Projection will attempt to play
+  // a `PREGAMEBVA.mp4` file in the same folder; when it ends, it notifies control.
+  if (action.type === 'startVideo') {
+    // Prepare overlay for full-screen video playback
+    showPregameOverlay(action.screenMode || 'black');
+    pregameOverlay.classList.add('black');
+
+    // Hide the large title text while the video plays
+    if (pregameModeLabel) pregameModeLabel.classList.add('hidden');
+    if (pregameContent) pregameContent.classList.add('hidden');
+
+    // create or reuse a video element attached to the overlay so it can cover the whole screen
+    let videoEl = document.getElementById('pregameVideo');
+    if (!videoEl) {
+      videoEl = document.createElement('video');
+      videoEl.id = 'pregameVideo';
+      videoEl.src = 'PREGAMEBVA.mp4';
+      videoEl.autoplay = true;
+      videoEl.playsInline = true;
+      videoEl.controls = false;
+      videoEl.muted = false;
+      // full-screen covering styles
+      videoEl.style.position = 'fixed';
+      videoEl.style.inset = '0';
+      videoEl.style.width = '100vw';
+      videoEl.style.height = '100vh';
+      videoEl.style.objectFit = 'cover';
+      videoEl.style.zIndex = '2500';
+      videoEl.style.background = '#000';
+      // append directly to the overlay so it's contained with the pregame layer
+      pregameOverlay.appendChild(videoEl);
+    }
+
+    // try to play (may be blocked by autoplay policies). If blocked, notify control so it can still continue.
+    videoEl.play().catch(() => {
+      try { window.setFirebase(window.ref(window.db, 'pregameAction'), { type: 'videoDone' }); } catch (e) {}
+      sendSocketMessage({ type: 'pregame-action', action: { type: 'videoDone' } });
+    });
+
+    videoEl.onended = () => {
+      // remove video element and keep the overlay black until Start Pregame pressed
+      try { if (videoEl && videoEl.parentNode) videoEl.parentNode.removeChild(videoEl); } catch (e) {}
+      // ensure the overlay remains black and pregame content stays hidden
+      pregameOverlay.classList.add('black');
+      if (pregameContent) pregameContent.classList.add('hidden');
+      if (pregameModeLabel) pregameModeLabel.classList.add('hidden');
+      pregameTeamLabel.classList.add('hidden');
+      pregamePlayerRow.classList.add('hidden');
+      // notify control that video finished so 'Start pregame' can be enabled
+      try { window.setFirebase(window.ref(window.db, 'pregameAction'), { type: 'videoDone' }); } catch (e) {}
+      sendSocketMessage({ type: 'pregame-action', action: { type: 'videoDone' } });
+    };
+    return;
+  }
+
   if (action.type === 'startPregameShow') {
+    // ensure pregame area is visible and ready for the player presentation
+    if (pregameContent) pregameContent.classList.remove('hidden');
+    if (pregameModeLabel) pregameModeLabel.classList.remove('hidden');
     showPregameOverlay(action.screenMode);
     pregameTeamLabel.classList.add('hidden');
     pregamePlayerRow.classList.add('hidden');
   }
 
   if (action.type === 'showTeamName') {
+    if (pregameContent) pregameContent.classList.remove('hidden');
+    if (pregameModeLabel) pregameModeLabel.classList.remove('hidden');
     showPregameOverlay(action.screenMode || pregameScreenMode || 'main');
     updatePregameScreen({ type: 'teamName', teamName: action.teamName });
   }
 
   if (action.type === 'showPlayer') {
+    if (pregameContent) pregameContent.classList.remove('hidden');
+    if (pregameModeLabel) pregameModeLabel.classList.remove('hidden');
     showPregameOverlay(action.screenMode || pregameScreenMode || 'main');
     updatePregameScreen({ type: 'player', player: action.player, teamName: action.teamName });
   }
@@ -417,7 +545,7 @@ function startTimeoutCountdown(timeoutData) {
   document.getElementById('timeoutProjHomeScore').textContent = homeScore;
   document.getElementById('timeoutProjAwayScore').textContent = awayScore;
   document.getElementById('timeoutTitle').textContent = `TIME-OUT ${timeoutData.teamName}`;
-  document.getElementById('timeoutLastScoreDisplay').textContent = `Laatste score: ${getStoredLastScore()}`;
+  document.getElementById('timeoutLastScoreDisplay').textContent = `Laatste actie: ${getStoredLastScore()}`;
   
   // Hide main display
   mainDisplay.style.display = 'none';
@@ -530,7 +658,7 @@ function showPopup(popupData) {
   // Build popup content
   // Map simple 'P' to 'FOUT' for display consistency
   const typeLabel = (type === 'FOUT' || type === 'P') ? 'FOUT' : type;
-  const playerDisplay = `${typeLabel} nummer ${player.number}: ${player.name}`;
+  const playerDisplay = `${typeLabel} Nummer ${player.number}: ${player.name}`;
   
   // Build stats
   const pointsText = player.points === 1 ? '1 punt' : `${player.points} punten`;
@@ -544,8 +672,8 @@ function showPopup(popupData) {
     statsHTML += '</div>';
   }
 
-  // If free-throw shooter info provided, include it
-  const shooterHTML = popupData && popupData.shooterText ? `<div class="popup-shooter">${popupData.shooterText}</div>` : '';
+  // If free-throw shooter info provided, include it in its own box under the main message
+  const shooterHTML = popupData && popupData.shooterText ? `<div class="popup-shooter-box">${popupData.shooterText}</div>` : '';
 
   // Show team name prominently above message
   const teamLabel = player.team === 'home' ? currentState.homeName : currentState.awayName;
