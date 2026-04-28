@@ -54,6 +54,7 @@ if (socket) {
   });
 }
 let popupTimeout = null;
+let popupForceTimeout = null;
 let countdownInterval = null;
 let currentCountdownType = null;
 let pregameScreenMode = 'main';
@@ -647,24 +648,27 @@ function loadState() {
 function showPopup(popupData) {
   try { console.log('[projection] showPopup called', popupData); } catch (e) {}
   if (!popupData || !popupData.player) return;
-  
-  // Clear any existing timeout
+
+  // Clear any existing timeouts (normal + force-hide)
   if (popupTimeout) {
     clearTimeout(popupTimeout);
+    popupTimeout = null;
   }
-  
+  if (popupForceTimeout) {
+    clearTimeout(popupForceTimeout);
+    popupForceTimeout = null;
+  }
+
   const { player, type } = popupData;
   const mainDisplay = document.querySelector('.main-display');
-  
+
   // Build popup content
-  // Map simple 'P' to 'FOUT' for display consistency
   const typeLabel = (type === 'FOUT' || type === 'P') ? 'FOUT' : type;
   const playerDisplay = `${typeLabel} Nummer ${player.number}: ${player.name}`;
-  
-  // Build stats
+
   const pointsText = player.points === 1 ? '1 punt' : `${player.points} punten`;
   const foulsText = player.fouls === 1 ? '1 fout' : `${player.fouls} fouten`;
-  
+
   let statsHTML = '';
   if (player.points > 0 || player.fouls > 0) {
     statsHTML = '<div class="popup-stats">';
@@ -673,27 +677,40 @@ function showPopup(popupData) {
     statsHTML += '</div>';
   }
 
-  // If free-throw shooter info provided, include it in its own box under the main message
   const shooterHTML = popupData && popupData.shooterText ? `<div class="popup-shooter-box">${popupData.shooterText}</div>` : '';
 
-  // Show team name prominently above message
   const teamLabel = player.team === 'home' ? currentState.homeName : currentState.awayName;
-  
+
   popup.innerHTML = `<div class="popup-content">
     <div class="popup-team">${teamLabel}</div>
     <div class="popup-title">${playerDisplay}</div>
     ${statsHTML}
     ${shooterHTML}
   </div>`;
-  
+
   popup.classList.add('visible');
-  mainDisplay.style.display = 'none';
-  
+  if (mainDisplay) mainDisplay.style.display = 'none';
+
+  // helper to hide the popup safely
+  function hidePopupNow() {
+    if (popupTimeout) { clearTimeout(popupTimeout); popupTimeout = null; }
+    if (popupForceTimeout) { clearTimeout(popupForceTimeout); popupForceTimeout = null; }
+    try { popup.classList.remove('visible'); } catch (e) {}
+    if (mainDisplay) mainDisplay.style.display = '';
+  }
+
+  // normal hide after 5s
   popupTimeout = setTimeout(() => {
-    popup.classList.remove('visible');
-    mainDisplay.style.display = '';
-    popupTimeout = null;
+    hidePopupNow();
   }, 5000);
+
+  // force-hide fallback after 7s if something prevents normal hide
+  popupForceTimeout = setTimeout(() => {
+    if (popup.classList.contains('visible')) {
+      try { console.warn('[projection] popup still visible after timeout, forcing hide'); } catch (e) {}
+      hidePopupNow();
+    }
+  }, 7000);
 }
 
 // Listen for custom events from control page (same window)
