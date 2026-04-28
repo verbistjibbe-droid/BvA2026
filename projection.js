@@ -645,6 +645,7 @@ function loadState() {
 }
 
 function showPopup(popupData) {
+  try { console.log('[projection] showPopup called', popupData); } catch (e) {}
   if (!popupData || !popupData.player) return;
   
   // Clear any existing timeout
@@ -844,6 +845,7 @@ function setupFirebaseListenersProjection() {
   window.onValue(window.ref(window.db, 'popup'), (snapshot) => {
     const data = snapshot.val();
     if (data) {
+      try { console.log('[projection] received popup from Firebase', data); } catch (e) {}
       showPopup(data);
       try { window.setFirebase(window.ref(window.db, 'popup'), null); } catch (e) {}
     }
