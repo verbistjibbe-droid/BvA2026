@@ -46,6 +46,28 @@ const accessCodeInput = document.getElementById('accessCodeInput');
 const accessCodeSubmit = document.getElementById('accessCodeSubmit');
 const accessError = document.getElementById('accessError');
 
+// Quick attach: ensure access-code UI works even if full init() is delayed or Firebase fails
+if (accessCodeSubmit) {
+  accessCodeSubmit.addEventListener('click', () => {
+    try {
+      checkAccessCode();
+    } catch (err) {
+      console.error('checkAccessCode error', err);
+    }
+  });
+}
+if (accessCodeInput) {
+  accessCodeInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      try { checkAccessCode(); } catch (err) { console.error('checkAccessCode error', err); }
+    }
+  });
+  accessCodeInput.addEventListener('input', () => {
+    if (accessError) accessError.classList.add('hidden');
+  });
+}
+
 // DOM Elements - Main
 const homeNameInput = document.getElementById('homeName');
 const awayNameInput = document.getElementById('awayName');
