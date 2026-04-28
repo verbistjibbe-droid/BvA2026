@@ -13,6 +13,12 @@
   --foul-active: #ffffff; /* Wit voor actieve fouten */
 }
 
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
 body {
   margin: 0;
   font-family: Inter, system-ui, sans-serif;
@@ -48,17 +54,16 @@ html, body {
 }
 
 .control-shell {
-  width: min(100%, 1200px);
-  max-width: 1200px;
-  margin: 8px auto;
-  padding: 12px;
+  width: 100vw;
+  height: 100vh;
+  margin: 0;
+  padding: 10px;
   background: var(--panel);
-  border-radius: 16px;
+  border-radius: 0;
   box-sizing: border-box;
-  max-height: calc(100vh - 16px);
   display: flex;
   flex-direction: column;
-  overflow: auto;
+  overflow: hidden;
 }
 
 .control-shell header {
@@ -477,13 +482,12 @@ html, body {
 
 .control-layout {
   display: grid;
-  /* Fullscreen 3-column layout: left = thuis, center = bediening, right = uitploeg */
   grid-template-columns: 34% 32% 34%;
-  gap: 10px;
-  margin-bottom: 6px;
-  flex: 1;
-  min-height: 0; /* allow children to shrink */
-  height: calc(100vh - 40px);
+  gap: clamp(8px, 1.2vw, 16px);
+  margin: 0;
+  padding: 6px;
+  width: 100vw;
+  height: 100vh;
 }
 
 .team-section {
@@ -492,9 +496,14 @@ html, body {
   min-width: 0;
 }
 
-team-column, .control-center {
+.team-column, .control-center {
   min-height: 0;
-  overflow: visible;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 8px;
+  overflow: hidden; /* prevent internal scrolling */
 }
 
 .team-section .team-input {
@@ -507,7 +516,7 @@ team-column, .control-center {
   gap: 8px;
   min-height: 0;
   padding-right: 4px;
-  overflow: auto;
+  overflow: hidden;
   max-height: 100%;
 }
 
@@ -571,14 +580,14 @@ team-column, .control-center {
   display: grid;
   width: 100%;
   box-sizing: border-box;
-  min-height: 50px;
-  height: 8vh;
-  gap: 8px;
-  padding: 10px;
-  border-radius: 18px;
+  min-height: 40px;
+  height: auto;
+  gap: 6px;
+  padding: clamp(6px, 0.8vh, 10px);
+  border-radius: 12px;
   background: var(--panel-alt);
-  border: 2px solid var(--red);
-  margin-bottom: 12px;
+  border: 1px solid rgba(0,0,0,0.2);
+  margin-bottom: 8px;
   overflow: hidden;
 }
 
@@ -596,17 +605,17 @@ team-column, .control-center {
 }
 
 .player-number {
-  width: 48px;
-  height: 48px;
-  border-radius: 14px;
+  width: clamp(36px, 4.5vw, 48px);
+  height: clamp(36px, 4.5vw, 48px);
+  border-radius: 12px;
   display: grid;
   place-items: center;
   background: var(--red);
   color: white;
   font-weight: 700;
   cursor: pointer;
-  transition: all 0.2s ease;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  transition: all 0.12s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
 }
 
 .player-number:hover {
@@ -752,7 +761,7 @@ team-column, .control-center {
 
 .player-edit-row {
   display: grid;
-  grid-template-columns: 100px minmax(0, 1fr) auto;
+  grid-template-columns: 120px 1fr auto;
   gap: 8px;
   align-items: end;
   padding: 10px;
@@ -804,6 +813,72 @@ team-column, .control-center {
 
 .player-edit-actions button:hover {
   opacity: 0.9;
+}
+
+/* Wider player-edit modal and foul modal styles */
+#playerEditModal .modal-content.player-edit-modal {
+  min-width: 520px;
+  max-width: 920px;
+  width: min(92vw, 920px);
+  padding: 22px;
+}
+
+#foulModal .modal-content {
+  min-width: 420px;
+  max-width: 920px;
+  width: min(92vw, 900px);
+  padding: 20px;
+}
+
+.foul-player-list {
+  display: flex;
+  flex-direction: row;
+  gap: 12px;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  overflow: visible;
+  padding: 8px 4px;
+  margin: 12px 0;
+}
+
+.foul-player-option {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 100px;
+  padding: 10px 12px;
+  background: var(--panel-alt);
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.08);
+  cursor: pointer;
+  color: var(--text);
+}
+
+.foul-player-number {
+  font-weight: 800;
+  font-size: 1.05rem;
+  background: rgba(0,0,0,0.12);
+  padding: 6px 10px;
+  border-radius: 8px;
+}
+
+.foul-player-name {
+  font-size: 0.95rem;
+  text-align: center;
+  max-width: 120px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Ensure modal action buttons stay centered in foul modal */
+#foulModal .modal-actions {
+  margin-top: 12px;
+  display: flex;
+  gap: 12px;
+  justify-content: center;
 }
 
 .controls-note {
@@ -1098,13 +1173,22 @@ team-column, .control-center {
 
 .proj-name {
   display: flex;
-  flex-direction: column;   /* 🔥 onder elkaar */
-  justify-content: center;
-  align-items: flex-start;
-
-  line-height: 1.02;
+  flex-direction: row; /* single-line by default */
+  align-items: center; /* vertically center name */
+  justify-content: flex-start;
+  font-size: clamp(1.1rem, 2.2vw, 1.6rem);
+  line-height: 1;
   min-width: 0;
   width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.proj-name.multi-line {
+  flex-direction: column;
+  white-space: normal;
+  font-size: clamp(0.85rem, 1.1vw, 0.95rem);
 }
 
 .proj-name span {
@@ -1146,13 +1230,24 @@ team-column, .control-center {
   }
 }
 
-.proj-score {
+.proj-right {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 6px;
+  gap: 8px;
+  min-width: 0;
+}
+
+.proj-points {
   font-weight: 700;
   color: var(--yellow);
+  font-size: clamp(0.95rem, 1.4vw, 1.1rem);
+  flex-shrink: 0;
+}
+
+.proj-sep {
+  width: 8px;
+  flex-shrink: 0;
 }
 
 .foul-dots {
@@ -1204,7 +1299,7 @@ team-column, .control-center {
 .popup-content {
   border: 4px solid white;
   border-radius: 28px;
-  padding: 40px 50px;
+  padding: 48px 60px;
   text-align: center;
   background: rgb(139, 0, 0);
   box-shadow: 0 0 40px rgba(0, 0, 0, 0.5);
@@ -1219,13 +1314,24 @@ team-column, .control-center {
 }
 
 .popup-title {
-  font-size: clamp(1.8rem, 4vw, 3.2rem);
+  font-size: clamp(2.2rem, 5vw, 4rem);
   font-weight: 800;
   color: white;
   margin-bottom: 20px;
   letter-spacing: -0.02em;
   white-space: normal;
   line-height: 1.05;
+}
+
+.popup-shooter-box {
+  text-align: center;
+  padding: 14px 18px;
+  margin-top: 12px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 12px;
+  font-size: clamp(1rem, 1.8vw, 1.4rem);
+  font-weight: 700;
 }
 
 .popup-stats {
@@ -1328,6 +1434,19 @@ team-column, .control-center {
   box-shadow: none;
 }
 
+/* Black prepare screen: larger, borderless title */
+.pregame-overlay.black .pregame-mode {
+  font-size: clamp(2rem, 4.8vw, 3.8rem);
+  font-weight: 600; /* slightly thinner */
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #fff;
+  text-align: center;
+  white-space: nowrap; /* keep on one line */
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .pregame-mode {
   font-size: 0.95rem;
   letter-spacing: 0.2em;
@@ -1356,12 +1475,43 @@ team-column, .control-center {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 24px;
-  width: 100%;
-  padding: 28px 32px;
-  border-radius: 24px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  gap: 28px;
+  width: min(92%, 1100px);
+  padding: 20px 28px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  margin: 0 auto;
+  box-shadow: 0 12px 44px rgba(0,0,0,0.6);
+}
+
+.pregame-number {
+  width: clamp(86px, 10vw, 140px);
+  height: clamp(86px, 10vw, 140px);
+  display: grid;
+  place-items: center;
+  background: rgba(0,0,0,0.72);
+  color: #ffffff;
+  font-weight: 900;
+  font-size: clamp(1.8rem, 4vw, 3rem);
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.06);
+  box-shadow: inset 0 -6px 18px rgba(0,0,0,0.6), 0 10px 28px rgba(0,0,0,0.55);
+  flex-shrink: 0;
+}
+
+.pregame-player-name {
+  flex: 1;
+  text-align: left;
+  font-size: clamp(2rem, 5vw, 4rem);
+  font-weight: 900;
+  color: #fff;
+  padding-left: 14px;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1;
 }
 
 /* NEW CONTROL LAYOUT STYLES */
@@ -1423,15 +1573,15 @@ team-column, .control-center {
 
 .players-grid {
   display: grid;
-  grid-auto-rows: min-content;
-  gap: 6px;
-  flex: 1;
-  padding: 6px;
+  grid-auto-rows: minmax(36px, min-content);
+  gap: clamp(4px, 0.6vh, 8px);
+  flex: 1 1 auto;
+  padding: clamp(6px, 0.8vh, 10px);
   background: rgba(0, 0, 0, 0.06);
-  border-radius: 12px;
+  border-radius: 10px;
   align-items: start;
   min-height: 0;
-  overflow: visible; /* ensure no internal scrolling */
+  overflow: hidden; /* prevent scrollbars */
 }
 
 .players-grid.compact .player-box {
@@ -1528,20 +1678,20 @@ team-column, .control-center {
 
 .team-column .player-box {
   width: 100%;
-  padding: 10px 8px;
+  padding: clamp(6px, 0.8vh, 10px) 8px;
   justify-content: center;
   align-items: center;
   gap: 6px;
-  border-width: 2px;
-  margin: 6px 0;
+  border-width: 1px;
+  margin: clamp(4px, 0.6vh, 8px) 0;
   box-sizing: border-box;
 }
 
 .team-column .player-box-number {
-  font-size: 1.6rem;
+  font-size: clamp(1.1rem, 2.0vw, 1.6rem);
   font-weight: 800;
-  min-width: 48px;
-  height: 48px;
+  min-width: 44px;
+  height: clamp(40px, 4.2vh, 48px);
   display: inline-grid;
   place-items: center;
   text-align: center;
@@ -1560,10 +1710,10 @@ team-column, .control-center {
 .team-players-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 8px;
+  gap: clamp(6px, 0.8vh, 10px);
   align-items: start;
   min-height: 0;
-  flex: 1; /* fill vertical space in the team column */
+  flex: 1 1 auto; /* fill vertical space in the team column */
 }
 
 .team-header {
@@ -1725,22 +1875,43 @@ team-column, .control-center {
 }
 
 .player-edit-row {
-  display: flex;
-  align-items: center;
+  display: grid;
+  grid-template-columns: 72px 1fr 88px;
   gap: 12px;
+  align-items: center;
   padding: 12px;
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
 }
 
 .edit-number {
-  min-width: 50px;
-  font-weight: 700;
-  font-size: 0.95rem;
+  min-width: 60px;
+  font-weight: 800;
+  font-size: 1rem;
+  padding: 8px 10px;
+  border-radius: 8px;
+  text-align: center;
 }
 
 .edit-name {
-  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+}
+
+.delete-icon-btn {
+  width: 36px;
+  height: 36px;
+  border: none;
+  background: rgba(255, 0, 0, 0.12);
+  color: white;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 1rem;
+}
+
+.delete-icon-btn:hover {
+  background: rgba(255, 0, 0, 0.22);
 }
 
 .edit-icon-btn {
@@ -1786,9 +1957,35 @@ team-column, .control-center {
 
 .bottom-controls {
   display: flex;
-  gap: 12px;
+  gap: 10px;
   justify-content: center;
-  margin-top: 8px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+/* Ensure modals don't visually float over layout but remain centered */
+.modal {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.6);
+  z-index: 2000;
+}
+
+/* Compact adjustments for shorter screens/laptops */
+@media (max-height: 840px) {
+  .control-layout { gap: 8px; padding: 6px; }
+  .team-header { padding: 8px; }
+  .team-name-input { font-size: 0.95rem; }
+  .player-card { min-height: 36px; padding: 6px; margin-bottom: 6px; border-radius: 10px; }
+  .player-number, .team-column .player-box-number { height: 36px; min-width: 36px; }
+  .player-number-large { font-size: 2.2rem; }
+  .player-name-large { font-size: 1rem; }
+  .period-btn { min-width: 32px; height: 32px; font-size: 0.8rem; }
+  .score-card .score-value { font-size: clamp(1.4rem, 4vw, 2rem); }
+  .bottom-controls .action-button { padding: 8px 10px; font-size: 0.9rem; }
 }
 
 .pregame-number {
@@ -1816,15 +2013,15 @@ team-column, .control-center {
 .popup-with-score {
   display: grid;
   grid-template-rows: auto auto auto;
-  gap: 22px;
-  width: min(100%, 920px);
-  max-width: 980px;
+  gap: 18px;
+  width: min(92vw, 920px);
+  max-width: 92vw;
   max-height: calc(100vh - 44px);
-  padding: 32px;
+  padding: clamp(16px, 2.4vh, 32px);
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 32px;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.3);
+  border-radius: 20px;
+  box-shadow: 0 18px 38px rgba(0, 0, 0, 0.28);
 }
 
 .timeout-bottom-score {
@@ -2047,10 +2244,12 @@ team-column, .control-center {
 
 .foul-player-list {
   display: flex;
-  flex-direction: column;
-  gap: 10px;
-  max-height: 400px;
-  overflow-y: auto;
+  flex-direction: row;
+  gap: 12px;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  overflow: visible;
 }
 
 .foul-player-option {
