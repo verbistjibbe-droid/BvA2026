@@ -574,6 +574,7 @@ function startTimeoutCountdown(timeoutData) {
 
 
 function startHalftimeCountdown(halftimeData) {
+  try { console.log('[projection] startHalftimeCountdown', halftimeData); } catch (e) {}
   currentCountdownType = 'halftime';
   const mainDisplay = document.querySelector('.main-display');
   const halftimePopup = document.getElementById('halftimePopup');
@@ -626,6 +627,7 @@ function stopTimeout() {
 function stopHalftime() {
   const mainDisplay = document.querySelector('.main-display');
   const halftimePopup = document.getElementById('halftimePopup');
+  try { console.log('[projection] stopHalftime called'); } catch (e) {}
   if (countdownInterval) {
     clearInterval(countdownInterval);
     countdownInterval = null;
@@ -905,9 +907,17 @@ function setupFirebaseListenersProjection() {
 
   window.onValue(window.ref(window.db, 'halftimeAction'), (snapshot) => {
     const action = snapshot.val();
-    if (action && action.type === 'stop') {
+    if (!action) return;
+    if (action.type === 'stop') {
       stopHalftime();
       try { window.setFirebase(window.ref(window.db, 'halftimeAction'), null); } catch (e) {}
+      return;
+    }
+    if (action.type === 'start' && action.halftimeData) {
+      // start halftime on projection when control triggers a start action
+      startHalftimeCountdown(action.halftimeData);
+      try { window.setFirebase(window.ref(window.db, 'halftimeAction'), null); } catch (e) {}
+      return;
     }
   });
 }
