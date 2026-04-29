@@ -1060,6 +1060,11 @@ function startHalftimeFromModal() {
   window.setFirebase(window.ref(window.db, 'halftimeData'), halftimeData);
   sendSocketMessage({ type: 'halftime-data', halftimeData });
   try { localStorage.setItem(storageKey('halftime-data'), JSON.stringify(halftimeData)); } catch (e) {}
+
+  // Also emit an explicit halftime action to ensure projection reacts immediately
+  const action = { type: 'start', halftimeData };
+  try { window.setFirebase(window.ref(window.db, 'halftimeAction'), action); } catch (e) {}
+  sendSocketMessage({ type: 'halftime-action', action });
   hideHalftimeModal();
   showActivePrompt('halftime');
 }
