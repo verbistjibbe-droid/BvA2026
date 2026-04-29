@@ -699,12 +699,12 @@ function showPopup(popupData) {
     if (mainDisplay) mainDisplay.style.display = '';
   }
 
-  // normal hide after 5s
+  // normal hide after 6 seconds
   popupTimeout = setTimeout(() => {
     hidePopupNow();
-  }, 5000);
+  }, 6000);
 
-  // force-hide fallback after 7s if something prevents normal hide
+  // force-hide fallback after 7 seconds if something prevents normal hide
   popupForceTimeout = setTimeout(() => {
     if (popup.classList.contains('visible')) {
       try { console.warn('[projection] popup still visible after timeout, forcing hide'); } catch (e) {}
