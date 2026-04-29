@@ -19,6 +19,14 @@ function storageKey(key) {
 function pushStateToFirebase() {
   const state = getCurrentStateFromUI();
 
+  // Ensure players are stored in ascending order by number for projection consistency
+  try {
+    state.homePlayers = (state.homePlayers || []).slice().sort((a, b) => (parseInt(a.number, 10) || 0) - (parseInt(b.number, 10) || 0));
+    state.awayPlayers = (state.awayPlayers || []).slice().sort((a, b) => (parseInt(a.number, 10) || 0) - (parseInt(b.number, 10) || 0));
+  } catch (e) {
+    // ignore sorting errors
+  }
+
   // Prefer Firebase when available
   if (window.setFirebase && window.ref && window.db) {
     try {
@@ -131,6 +139,8 @@ let pregameTeamOrder = [];
 let pregameCurrentTeamIndex = 0;
 let pregamePlayerIndex = -1; // -1 means show team name next
 let pregameVideoPlayed = false;
+// precomputed sorted lists used for pregame presentation (desc: groot->klein)
+let pregameSortedPlayers = { home: [], away: [] };
 
 function sendPregameAction(action) {
   window.setFirebase(window.ref(window.db, 'pregameAction'), action);
@@ -173,6 +183,15 @@ function startPregameSequence() {
   pregameTeamOrder = startTeam === 'home' ? ['home', 'away'] : ['away', 'home'];
   pregameCurrentTeamIndex = 0;
   pregamePlayerIndex = -1;
+  // Prepare sorted player lists for presentation: show players from groot naar klein (desc)
+  try {
+    // Pregame presentation: sort players from klein -> groot (ascending)
+    pregameSortedPlayers.home = (homePlayers || []).slice().sort((a, b) => (parseInt(a.number, 10) || 0) - (parseInt(b.number, 10) || 0));
+    pregameSortedPlayers.away = (awayPlayers || []).slice().sort((a, b) => (parseInt(a.number, 10) || 0) - (parseInt(b.number, 10) || 0));
+  } catch (e) {
+    pregameSortedPlayers.home = (homePlayers || []).slice();
+    pregameSortedPlayers.away = (awayPlayers || []).slice();
+  }
   // show first team name
   const teamKey = pregameTeamOrder[pregameCurrentTeamIndex];
   const teamName = teamKey === 'home' ? homeNameInput.value : awayNameInput.value;
@@ -194,7 +213,7 @@ function startPregameSequence() {
 
 function nextPregamePlayer() {
   const teamKey = pregameTeamOrder[pregameCurrentTeamIndex];
-  const players = teamKey === 'home' ? homePlayers : awayPlayers;
+  const players = teamKey === 'home' ? (pregameSortedPlayers.home || []) : (pregameSortedPlayers.away || []);
   if (pregamePlayerIndex === -1) {
     // show first player
     pregamePlayerIndex = 0;
