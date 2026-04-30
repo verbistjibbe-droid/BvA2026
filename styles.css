@@ -1394,6 +1394,15 @@ html, body {
   pointer-events: none;
 }
 
+/* Solid black backdrop placed between any playing video and the pregame UI */
+.pregame-backdrop {
+  position: absolute;
+  inset: 0;
+  background: #000;
+  z-index: 2500;
+  pointer-events: none;
+}
+
 .pregame-content {
   display: flex;
   flex-direction: column;
@@ -1408,6 +1417,12 @@ html, body {
   opacity: 0;
   transform: translateY(16px) scale(0.98);
   transition: opacity 0.34s ease, transform 0.34s ease;
+}
+
+/* Ensure pregame content displays above a playing video */
+.pregame-content {
+  position: relative;
+  z-index: 3000;
 }
 
 .pregame-content.pregame-appear {
