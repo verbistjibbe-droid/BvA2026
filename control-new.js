@@ -151,17 +151,13 @@ function openPregameModal() {
   if (!pregameModal) return;
   document.getElementById('pregameHomeLabel').textContent = homeNameInput.value;
   document.getElementById('pregameAwayLabel').textContent = awayNameInput.value;
-  // require video start before allowing 'Start pregame'
+  // Allow starting the pregame at any time and keep Start Video available
   const startBtn = document.getElementById('startPregameBtn');
-  if (startBtn) startBtn.disabled = true;
+  if (startBtn) startBtn.disabled = false;
   if (startVideoBtn) {
-    if (pregameVideoPlayed) {
-      startVideoBtn.style.display = 'none';
-      startVideoBtn.disabled = true;
-    } else {
-      startVideoBtn.style.display = '';
-      startVideoBtn.disabled = false;
-    }
+    // keep the Start Video button visible and enabled so the video can be replayed
+    startVideoBtn.style.display = '';
+    startVideoBtn.disabled = false;
   }
   pregameModal.classList.remove('hidden');
 }
@@ -854,9 +850,10 @@ function setupFirebaseListeners() {
         const startBtn = document.getElementById('startPregameBtn');
         if (startBtn) startBtn.disabled = false;
         pregameVideoPlayed = true;
+        // keep Start Video visible and enabled so it can be replayed
         if (startVideoBtn) {
-          startVideoBtn.disabled = true;
-          startVideoBtn.style.display = 'none';
+          startVideoBtn.disabled = false;
+          startVideoBtn.style.display = '';
         }
       }
       // projection asks to show a team name in the pregame prompt
@@ -876,10 +873,7 @@ function setupFirebaseListeners() {
         }
         const finishBtn = document.getElementById('finishPregameBtn');
         if (finishBtn) finishBtn.classList.add('hidden');
-        if (startVideoBtn) {
-          startVideoBtn.style.display = 'none';
-          startVideoBtn.disabled = true;
-        }
+        // keep Start Video available after pregame completes so it can be replayed
       }
     });
   } catch (e) {
@@ -1220,8 +1214,9 @@ function setupEventListeners() {
   if (startVideoBtn) startVideoBtn.addEventListener('click', () => {
     // send action to projection to start the PREGAME video
     sendPregameAction({ type: 'startVideo' });
-    // disable the video button to prevent double clicks
-    startVideoBtn.disabled = true;
+    // briefly disable to prevent accidental double clicks, but allow replay
+    try { startVideoBtn.disabled = true; } catch (e) {}
+    setTimeout(() => { try { startVideoBtn.disabled = false; } catch (e) {} }, 500);
   });
   if (nextBtn) nextBtn.onclick = nextPregamePlayer;
   if (cancelPregameBtn) cancelPregameBtn.onclick = closePregameModal;
