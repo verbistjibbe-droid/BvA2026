@@ -354,8 +354,27 @@ function showPregameOverlay(mode) {
   pregameOverlay.classList.toggle('black', mode === 'black');
   pregameModeLabel.textContent = 'FINALES BEKER VAN ANTWERPEN';
   if (mode === 'black') {
+    // hide the main projection and place a solid black backdrop above any playing video
     document.querySelector('.main-display').style.display = 'none';
+    let backdrop = document.getElementById('pregameBackdrop');
+    if (!backdrop) {
+      backdrop = document.createElement('div');
+      backdrop.id = 'pregameBackdrop';
+      backdrop.className = 'pregame-backdrop';
+      // append so it sits between any video and the pregame content
+      pregameOverlay.appendChild(backdrop);
+    }
+    // hide any existing video visuals behind the backdrop as extra safety
+    const existingVideo = document.getElementById('pregameVideo');
+    if (existingVideo) {
+      try { existingVideo.style.display = 'none'; } catch (e) {}
+    }
   } else {
+    // remove black backdrop if present
+    const existingBackdrop = document.getElementById('pregameBackdrop');
+    if (existingBackdrop && existingBackdrop.parentNode) {
+      existingBackdrop.parentNode.removeChild(existingBackdrop);
+    }
     document.querySelector('.main-display').style.display = '';
   }
   animatePregameContent();
@@ -432,6 +451,11 @@ function hidePregameOverlay() {
   setTimeout(() => {
     pregameOverlay.classList.add('hidden');
     pregameOverlay.classList.remove('pregame-closing');
+    // remove any black backdrop left behind
+    const existingBackdrop = document.getElementById('pregameBackdrop');
+    if (existingBackdrop && existingBackdrop.parentNode) {
+      existingBackdrop.parentNode.removeChild(existingBackdrop);
+    }
   }, 240);
   document.querySelector('.main-display').style.display = '';
 }
@@ -475,10 +499,34 @@ function handlePregameAction(action) {
       videoEl.style.width = '100vw';
       videoEl.style.height = '100vh';
       videoEl.style.objectFit = 'cover';
-      videoEl.style.zIndex = '2500';
+      // Keep the video below the pregame UI so we can overlay player cards on top
+      videoEl.style.zIndex = '1000';
       videoEl.style.background = '#000';
       // append directly to the overlay so it's contained with the pregame layer
       pregameOverlay.appendChild(videoEl);
+    } else {
+      // If video element already exists (replay scenario), ensure it's visible again
+      try { videoEl.style.display = ''; } catch (e) {}
+      // Ensure replay starts from the beginning
+      try {
+        if (!isNaN(videoEl.duration)) {
+          try { videoEl.pause(); } catch (e) {}
+          try { videoEl.currentTime = 0; } catch (e) {}
+        } else {
+          const _onLoadedForReset = function() {
+            try { videoEl.pause(); } catch (e) {}
+            try { videoEl.currentTime = 0; } catch (e) {}
+            videoEl.removeEventListener('loadedmetadata', _onLoadedForReset);
+          };
+          videoEl.addEventListener('loadedmetadata', _onLoadedForReset);
+        }
+      } catch (e) {}
+    }
+
+    // remove any black backdrop so video becomes visible
+    const existingBackdrop = document.getElementById('pregameBackdrop');
+    if (existingBackdrop && existingBackdrop.parentNode) {
+      existingBackdrop.parentNode.removeChild(existingBackdrop);
     }
 
     // try to play (may be blocked by autoplay policies). If blocked, notify control so it can still continue.
@@ -507,7 +555,8 @@ function handlePregameAction(action) {
     // ensure pregame area is visible and ready for the player presentation
     if (pregameContent) pregameContent.classList.remove('hidden');
     if (pregameModeLabel) pregameModeLabel.classList.remove('hidden');
-    showPregameOverlay(action.screenMode);
+    // Default to a black backdrop so the presentation never shows the video behind it
+    showPregameOverlay(action.screenMode || 'black');
     pregameTeamLabel.classList.add('hidden');
     pregamePlayerRow.classList.add('hidden');
   }
@@ -515,14 +564,27 @@ function handlePregameAction(action) {
   if (action.type === 'showTeamName') {
     if (pregameContent) pregameContent.classList.remove('hidden');
     if (pregameModeLabel) pregameModeLabel.classList.remove('hidden');
-    showPregameOverlay(action.screenMode || pregameScreenMode || 'main');
+    // If the presentation runs before (or during) the video, force a black background
+    const existingVideo = document.getElementById('pregameVideo');
+    const preferBlack = !existingVideo || (action.screenMode === 'black') || (pregameScreenMode === 'black');
+    showPregameOverlay(preferBlack ? 'black' : (action.screenMode || pregameScreenMode || 'main'));
+    // If a video exists, hide its visuals so it won't show as a background
+    if (existingVideo && preferBlack) {
+      try { existingVideo.style.display = 'none'; } catch (e) {}
+    }
     updatePregameScreen({ type: 'teamName', teamName: action.teamName });
   }
 
   if (action.type === 'showPlayer') {
     if (pregameContent) pregameContent.classList.remove('hidden');
     if (pregameModeLabel) pregameModeLabel.classList.remove('hidden');
-    showPregameOverlay(action.screenMode || pregameScreenMode || 'main');
+    // Ensure black background when showing players so the video is not used as backdrop
+    const existingVideo = document.getElementById('pregameVideo');
+    const preferBlack = !existingVideo || (action.screenMode === 'black') || (pregameScreenMode === 'black');
+    showPregameOverlay(preferBlack ? 'black' : (action.screenMode || pregameScreenMode || 'main'));
+    if (existingVideo && preferBlack) {
+      try { existingVideo.style.display = 'none'; } catch (e) {}
+    }
     updatePregameScreen({ type: 'player', player: action.player, teamName: action.teamName });
   }
 
